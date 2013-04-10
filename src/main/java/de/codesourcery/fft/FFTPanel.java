@@ -1,13 +1,13 @@
 package de.codesourcery.fft;
 
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Graphics;
 import java.awt.event.KeyAdapter;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Rectangle2D;
 
-import javax.swing.JFrame;
 import javax.swing.JPanel;
 
 import de.codesourcery.fft.AudioFile.AudioDataIterator;
@@ -41,16 +41,19 @@ public final class FFTPanel extends JPanel {
     			System.out.println("Apply window function: "+applyWindowFunction);
     			calcSpectrum();
     			repaint();
-    		} else if ( e.getKeyChar() == '+' && windowSize < 32768 ) {
+    		} else if ( e.getKeyChar() == '+' && windowSize <= 65535 ) {
     			windowSize = windowSize << 1;
     			calcSpectrum();
     			repaint();    			
-    		} else if ( e.getKeyChar() == '-' && windowSize > 1 ) 
+    		} 
+    		else if ( e.getKeyChar() == '-' && windowSize >= 4 ) 
     		{
     			windowSize = windowSize >> 1;
     			calcSpectrum();
     			repaint();
-        	}    		
+        	} else {
+        	    System.out.println("IGNORED KEYPRESS: '"+e.getKeyChar()+"'");
+        	}
     	}
 	};
 	
@@ -59,31 +62,41 @@ public final class FFTPanel extends JPanel {
         @Override
         public void mouseMoved( MouseEvent e)
         {
-            Graphics graphics = getGraphics();
-            graphics.setXORMode(Color.WHITE);                    
-            if ( currentMarkerX != -1 ) 
-            {
+            double maxX = xOrigin + bands*scaleX;
+            if ( e.getX() >= xOrigin && e.getX() < maxX ) {
+                Graphics graphics = getGraphics();
+                graphics.setXORMode(Color.WHITE);                    
+                if ( currentMarkerX != -1 ) 
+                {
+                    graphics.drawLine( currentMarkerX , yOrigin , currentMarkerX , 0 );
+                }
+                currentMarkerX = e.getX();
                 graphics.drawLine( currentMarkerX , yOrigin , currentMarkerX , 0 );
+                graphics.setPaintMode();    
+    
+                plotMarkerFrequency(graphics);
             }
-            currentMarkerX = e.getX();
-            graphics.drawLine( currentMarkerX , yOrigin , currentMarkerX , 0 );
-            graphics.setPaintMode();    
-
-            plotMarkerFrequency(graphics);
         }
     };
     
-    public void attachKeyListener(JFrame c) {
+    public void attachKeyListener(Component c) 
+    {
     	c.addKeyListener( this.keyAdapter );
     }
 
     public FFTPanel(AudioFile file,int windowSize)
     {
-    	setFile(file,windowSize);
+    	internalSetFile(file,windowSize);
     }
     
-    public void setFile(AudioFile file,int windowSize) {
+    public void setFile(AudioFile file) {
+        internalSetFile(file,windowSize);
+        repaint();
+    }
+    
+    private void internalSetFile(AudioFile file,int windowSize) {
         this.file = file;
+        System.out.println( file );
         this.windowSize = windowSize;
         addMouseMotionListener( adapter );
         calcSpectrum();    	
@@ -97,23 +110,19 @@ public final class FFTPanel extends JPanel {
         this.bands = windowSize/2;
 
         // find min/max values
-        double max = Long.MIN_VALUE;
-        double min = Long.MAX_VALUE;
+        double max = -Double.MAX_VALUE;
+        double min = Double.MAX_VALUE;
 
         for ( int i = 0 ; i < bands ; i++ ) 
         {
-            if ( spectrum[i] < min ) {
-                min = spectrum[i];
-            }
-            if ( spectrum[i] > max ) {
-                max = spectrum[i];
-            }            
+            min = Math.min( min ,  spectrum[i] );
+            max = Math.max( max , spectrum[i] );
         }
 
         this.minValue = min; 
         this.maxValue = max;
 
-        System.out.println("bands: "+this.bands+" / min = "+minValue+" / max = "+maxValue);      
+        System.out.println("bands: "+this.bands+" ("+AudioFile.hertzToString( getBandwidth() )+" per band ) / min = "+minValue+" / max = "+maxValue);      
     }
 
     private void resized() 
@@ -132,6 +141,8 @@ public final class FFTPanel extends JPanel {
     public void paint(Graphics g)
     {
         super.paint(g);
+        
+        currentMarkerX =  -1;
 
         resized();
 
@@ -147,7 +158,8 @@ public final class FFTPanel extends JPanel {
         g.clearRect( x , y-15 , 150 , g.getFontMetrics().getHeight() );
 
         // render frequency at current marker position
-        if ( currentMarkerX >= xOrigin ) 
+        double maxX = xOrigin + bands * scaleX;
+        if ( currentMarkerX >= xOrigin && currentMarkerX <= maxX ) 
         {
             final int band = (int) ( (currentMarkerX-xOrigin) / scaleX );
 
@@ -168,15 +180,16 @@ public final class FFTPanel extends JPanel {
         	barWidthInPixels = 1;
         }
 
-        int x = 0;
-        for ( int band = 0 ; band < bands ; band++, x+= Math.ceil( scaleX ) ) 
+        for ( int band = 0 ; band < bands ; band++ ) 
         {
+            final int x = (int) Math.floor( xOrigin + band*scaleX); 
+            
             double value = spectrum[band]+yOffset;
             final double y = value*scaleY;
 
             final double frequency = getFrequencyForBand( band );
             
-            g.drawRect( xOrigin + x , (int) Math.round( yOrigin - y ) , barWidthInPixels , (int) Math.round( y ) );
+            g.drawRect( x , (int) Math.round( yOrigin - y ) , barWidthInPixels , (int) Math.round( y ) );
 
             if ( bands < 32 ) 
             {
@@ -184,16 +197,18 @@ public final class FFTPanel extends JPanel {
                 final String f = AudioFile.hertzToString( frequency );
                 final Rectangle2D bounds = g.getFontMetrics().getStringBounds( f , g );
 
-                g.drawString( f , xOrigin + x + barWidthInPixels/2 - (int) Math.round(bounds.getWidth()/2) , yOrigin + g.getFontMetrics().getHeight() );
+                g.drawString( f , x + barWidthInPixels/2 - (int) Math.round(bounds.getWidth()/2) , yOrigin + g.getFontMetrics().getHeight() );
             }
         }
     }
 
     private double getFrequencyForBand(int band) 
     {
-        double bandWidth = file.getFormat().getSampleRate()/2.0/bands;
-        final double freqInHertz = band * bandWidth;
-        return freqInHertz;
+        return band * getBandwidth();
+    }
+    
+    private double getBandwidth() {
+        return file.getFormat().getSampleRate()/2.0/bands;
     }
     
     private double[] calculateFFT(AudioFile file,int windowSize,boolean applyWindowingFunction) 
@@ -209,12 +224,13 @@ public final class FFTPanel extends JPanel {
 		// join data from all channels by summing them up and taking the arithmetic average
         final int totalSampleCount = (int) Math.ceil( file.getTotalFrameCount()* ( file.getSamplesPerFrame() / file.getFormat().getChannels() ));
 
-        final int channels = file.getFormat().getChannels();
+        final double channels = file.getFormat().getChannels();
         final double[] jointStereo = new double[ totalSampleCount ]; // 16-bit samples
         for ( int channel = 0 ; channel < channels ; channel++) 
         {
             final AudioDataIterator it = file.iterator( data , channel ); 
-            for ( int j = 0 ; j < totalSampleCount ; j++ ) {
+            for ( int j = 0 ; j < totalSampleCount ; j++ ) 
+            {
                     jointStereo[j] += it.next();
             }
         }
@@ -223,21 +239,23 @@ public final class FFTPanel extends JPanel {
             jointStereo[j] /= channels;
         }
         
-        // apply windowing function        
+        // optionally, apply a windowing function to the sample data        
         if ( applyWindowingFunction ) {
             applyWindowingFunction( jointStereo );
         }        
 
-        final double[] fftData = new double[ windowSize * 2 ]; // need to allocate twice the FFT size since fftData[0] = Re(0) , fftData[1] = Img(0) , ...
+        final double[] fftData = new double[ windowSize * 2 ]; // need to allocate twice the FFT size , array needs to hold real and imaginary components
         final double[] spectrum = new double[ windowSize ]; 
 
-        // loop over samples , performing an FFT on each window 
+        // loop over samples , performing FFT on each window 
         int windowCount = 0;
         final DoubleFFT_1D fft = new DoubleFFT_1D(windowSize);
         
-        for ( int offset = 0 ; offset < jointStereo.length-windowSize ; offset += windowSize ) 
+        final double[] compensation = new double[windowSize]; // Kahan summation compensation for each FFT bin
+        final double step = windowSize*0.33;
+        for ( int offset = 0 ; offset < jointStereo.length-windowSize ; offset += step ) 
         {
-        	// convert sample data to a double[] array
+        	// copy sample data to an array
         	// where element(k) = real part (k) and element(k+1) = imaginary part (k)
             int ptr = 0;
             for ( int i = 0 ; i < windowSize ; i++, ptr+=2 ) {
@@ -250,24 +268,32 @@ public final class FFTPanel extends JPanel {
 
             // convert FFT result to spectrum (magnitude)
             ptr = 0;
-            for ( int i = 0 ; i < windowSize ; i++ , ptr+=2) 
+            for ( int bin = 0 ; bin < windowSize ; bin++ , ptr+=2) 
             {
             	final double magnitude;
-            	if ( i != 0 ) {
+            	if ( bin != 0 ) {
             		magnitude = Math.sqrt( fftData[ptr] * fftData[ptr] + fftData[ptr+1]*fftData[ptr+1] );
             	} else {
             		// special case since FFT(0) and FFT(N/2) do not have a complex component,
             		// JTransform stores these as element(0) and element(1)
             		magnitude = fftData[ptr];
             	}
-//                spectrum[i] += 10*Math.log10( magnitude*magnitude );
-                spectrum[i] += (magnitude*magnitude);
+            	
+            	double input = (magnitude*magnitude);
+            	
+            	// average using Kahan summation to minimize rounding errors
+            	double y = input - compensation[bin];
+            	double t = spectrum[bin] + y;
+            	compensation[bin] = ( t - spectrum[bin] ) - y;
+                spectrum[bin] = t;
             }
             windowCount++;
         }
 
-        for ( int i = 0 ; i < windowSize ; i++ ) {
-            spectrum[i] = spectrum[i] / (double) windowCount;
+        for ( int i = 0 ; i < windowSize ; i++ ) 
+        {
+//            spectrum[i] = 10*Math.log10( spectrum[i] / windowCount );
+            spectrum[i] = spectrum[i] / windowCount;
         }
         return spectrum;
     }
@@ -278,11 +304,8 @@ public final class FFTPanel extends JPanel {
         for ( int ptr = 0 ; ptr < len ; ptr++ ) // data[k] = Re(k) , data[k+1=Img(k)
         {
             final double n = ptr % windowSize;
-            // Hann window
-//            double coeff = 0.5f*( 1.0f - (float) Math.cos( (2f*Math.PI*n) / ( windowSize-1 ) ) );
-             double coeff = 0.5 - 0.5*Math.cos( (2f*Math.PI*n) / (double) ( windowSize-1 ) );                
-            // Welch window
-//            double coeff = 1-( (n-((windowSize-1)/2 ) ) / ((windowSize+1)/2) );            
+            double coeff = 0.5 - 0.5*Math.cos( (2f*Math.PI*n) / (double) ( windowSize-1 ) ); // Hann window               
+//          double coeff = 1-( (n-((windowSize-1)/2 ) ) / ((windowSize+1)/2) ); // Welch window         
             data[ptr] = data[ptr] * coeff;
         }
     }    
