@@ -31,7 +31,7 @@ public class FFTest
         final JFrame frame = new JFrame("FFT");
         
         // setup FFT spectrum panel
-        final FFTPanel panel = new FFTPanel( new AudioFile( currentFile.getText() ) , 128 ); 
+        final SpectrumPanel panel = new SpectrumPanel( new AudioFile( currentFile.getText() ) , 128 ); 
         
         panel.setSize( new Dimension(600,400 ) );
         panel.setPreferredSize( new Dimension(600,400 ) );
