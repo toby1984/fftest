@@ -7,6 +7,7 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Rectangle2D;
+import java.util.concurrent.CountDownLatch;
 
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
@@ -15,225 +16,329 @@ import de.codesourcery.fft.ISpectrumProvider.ICallback;
 
 public final class SpectrumPanel extends JPanel {
 
-    private volatile int currentMarkerX = -1;
+	private volatile int currentMarkerX = -1;
 
-    private volatile int width;
-    private volatile int height;
-    private volatile int xOrigin;
-    private volatile int yOrigin;
-    private volatile double scaleX;
-    private volatile double scaleY;
-    
-    private final ICallback repaintCallback = new ICallback() {
+	private volatile int width;
+	private volatile int height;
+	private volatile int xOrigin;
+	private volatile int yOrigin;
+	private volatile double scaleX;
+	private volatile double scaleY;
 
-        @Override
-        public void calculationFinished(ISpectrumProvider provider, Spectrum spectrum)
-        {
-            SwingUtilities.invokeLater( new Runnable()  {
+	private volatile boolean applyMinValue;  
+	private volatile double minValue;
+	
+	private final Object REFRESH_THREAD_LOCK = new Object();
 
-                @Override
-                public void run()
-                {
-                    repaint();
-                }
-            });
-        }
-        @Override
-        public void calculationFailed(ISpectrumProvider provider) { }
-    };    
+	private final RefreshThread refreshThread = new RefreshThread();
+	
+	protected final class RefreshThread extends Thread 
+	{
+		private volatile boolean terminateRefreshThread;
+		private final CountDownLatch latch = new CountDownLatch(1);
 
-    private boolean applyWindowFunction=true;
-    private int bands;
+		public RefreshThread()
+		{
+			setDaemon(true);
+			start();
+		}
 
-    private final AudioFileSpectrumProvider spectrumProvider;
+		public void terminate() 
+		{
+			terminateRefreshThread = true;
+			
+			synchronized( REFRESH_THREAD_LOCK ) {
+				REFRESH_THREAD_LOCK.notifyAll();
+			}
+			
+			while(true) 
+			{
+				try {
+					latch.await();
+					break;
+				} catch (InterruptedException e) {
+				}
+			}
+		}
+		
+		public void run() 
+		{
+			try 
+			{
+outer:				
+				while( ! terminateRefreshThread ) 
+				{
+					synchronized(REFRESH_THREAD_LOCK) 
+					{
+						while ( spectrumProvider == null || spectrumProvider.isStatic() ) 
+						{
+							try {
+								REFRESH_THREAD_LOCK.wait();
+							} 
+							catch (InterruptedException e) 
+							{
+								Thread.currentThread().interrupt();
+							}
+							continue outer;
+						}
+					}
 
-    private final KeyAdapter keyListener = new KeyAdapter() 
-    {
-        public void keyTyped(java.awt.event.KeyEvent e) 
-        {
-            if ( e.getKeyChar()== 'w') {
-                applyWindowFunction = ! applyWindowFunction;
-                System.out.println("Apply window function: "+applyWindowFunction);
-                refresh();
-            } else if ( e.getKeyChar() == '+' && bands <= 65535 ) {
-                bands = bands << 1;
-                refresh();
-            } 
-            else if ( e.getKeyChar() == '-' && bands >= 2 ) 
-            {
-                bands = bands >> 1;
-                refresh();
-            } else {
-                System.out.println("IGNORED KEYPRESS: '"+e.getKeyChar()+"'");
-            }
-        }
-    };
+					refresh();
 
-    private final MouseAdapter mouseListener = new MouseAdapter() 
-    {
-        @Override
-        public void mouseMoved( MouseEvent e)
-        {
-            double maxX = xOrigin + bands*scaleX;
-            
-            if ( e.getX() >= xOrigin && e.getX() < maxX ) 
-            {
-                Graphics graphics = getGraphics();
-                graphics.setXORMode(Color.WHITE);                    
-                if ( currentMarkerX != -1 ) 
-                {
-                    graphics.drawLine( currentMarkerX , yOrigin , currentMarkerX , 0 );
-                }
-                currentMarkerX = e.getX();
-                graphics.drawLine( currentMarkerX , yOrigin , currentMarkerX , 0 );
-                graphics.setPaintMode();    
+					try 
+					{
+						Thread.sleep( 100 );
+					} 
+					catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+					}
+				}
+			} finally {
+				latch.countDown();
+				System.out.println("Refresh thread terminated");
+			}
+		}
+	}; 
+	
+	private volatile Spectrum spectrum;
 
-                plotMarkerFrequency(graphics);
-            }
-        }
-    };
+	private final ICallback repaintCallback = new ICallback() {
 
-    public void attachKeyListener(Component c) 
-    {
-        c.addKeyListener( this.keyListener );
-    }
+		@Override
+		public void calculationFinished(ISpectrumProvider provider, Spectrum spectrum)
+		{
+			SpectrumPanel.this.spectrum = spectrum;
+			
+			SwingUtilities.invokeLater( new Runnable()  {
 
-    public SpectrumPanel(AudioFile file,int windowSize)
-    {
-        this.spectrumProvider = new AudioFileSpectrumProvider( file );
-        this.bands = windowSize/2;
-        addMouseMotionListener( mouseListener );
-        refresh();
-    }
+				@Override
+				public void run()
+				{
+					repaint();
+				}
+			});
+		}
+		@Override
+		public void calculationFailed(ISpectrumProvider provider) { }
+	};    
 
-    public void setFile(AudioFile file) 
-    {
-        spectrumProvider.setAudioFile( file );
-        refresh();
-    }
-    
-    public void refresh() 
-    {
-        spectrumProvider.calcSpectrum( repaintCallback , this.bands*2 , this.applyWindowFunction );        
-    }
+	private boolean applyWindowFunction=true;
 
-    private void resized(Spectrum s) 
-    {
-        this.width = Math.round(getWidth()*0.8f);
-        this.height = Math.round(getHeight()*0.8f);
+	private int bands;
 
-        this.xOrigin = (int) Math.round( getWidth() * 0.1);
-        this.yOrigin = Math.round( getHeight() *0.9f);
+	private volatile ISpectrumProvider spectrumProvider;
 
-        this.scaleX = width / (double) s.getBands();
-        this.scaleY = height / Math.abs( s.getMaxValue() - s.getMinValue() );
-    }
+	private final KeyAdapter keyListener = new KeyAdapter() 
+	{
+		public void keyTyped(java.awt.event.KeyEvent e) 
+		{
+			if ( e.getKeyChar()== 'c') {
+				applyMinValue = false;
+				System.out.println("Cleared min. value");
+			} 
+			else if ( e.getKeyChar()== 'm') {
+				Spectrum spectrum = getSpectrum();
+				if ( spectrum != null ) {
+					applyMinValue = true;
+					minValue = spectrum.getMaxValue();
+					System.out.println("Applying min. value: "+minValue);
+				}
+			} 
+			else if ( e.getKeyChar()== 'w') {
+				applyWindowFunction = ! applyWindowFunction;
+				System.out.println("Apply window function: "+applyWindowFunction);
+				refresh();
+			} else if ( e.getKeyChar() == '+' && bands <= 65535 ) {
+				bands = bands << 1;
+				refresh();
+			} 
+			else if ( e.getKeyChar() == '-' && bands >= 2 ) 
+			{
+				bands = bands >> 1;
+				refresh();
+			} else {
+				System.out.println("IGNORED KEYPRESS: '"+e.getKeyChar()+"'");
+			}
+		}
+	};
 
-    protected Spectrum getSpectrum() 
-    {
-        final Spectrum[] result = {null};
+	private final MouseAdapter mouseListener = new MouseAdapter() 
+	{
+		@Override
+		public void mouseMoved( MouseEvent e)
+		{
+			double maxX = xOrigin + bands*scaleX;
 
-        final ICallback callback = new ICallback() 
-        {
+			if ( e.getX() >= xOrigin && e.getX() < maxX ) 
+			{
+				Graphics graphics = getGraphics();
+				graphics.setXORMode(Color.WHITE);                    
+				if ( currentMarkerX != -1 ) 
+				{
+					graphics.drawLine( currentMarkerX , yOrigin , currentMarkerX , 0 );
+				}
+				currentMarkerX = e.getX();
+				graphics.drawLine( currentMarkerX , yOrigin , currentMarkerX , 0 );
+				graphics.setPaintMode();    
 
-            @Override
-            public void calculationFinished(ISpectrumProvider provider, Spectrum spectrum)
-            {
-                synchronized( result ) 
-                {
-                    result[0] = spectrum;
-                }
-            }
+				plotMarkerFrequency(graphics);
+			}
+		}
+	};
 
-            @Override
-            public void calculationFailed(ISpectrumProvider provider) { }
-        };
-        
-        spectrumProvider.calcSpectrum( callback , this.bands*2 , this.applyWindowFunction );
-        
-        synchronized( result ) {
-            return result[0];
-        }
-    }
+	public void dispose() 
+	{
+		refreshThread.terminate();
+		spectrumProvider.close();
+	}
 
-    @Override
-    public void paint(Graphics g)
-    {
-        super.paint(g);
-        
-        currentMarkerX =  -1;
-        
-        Spectrum s = getSpectrum();
-        if ( s != null )
-        {                
-            resized(s);
-            plotChart( g , s );
-            plotMarkerFrequency(g);
-        }
-    }
+	public void attachKeyListener(Component c) 
+	{
+		c.addKeyListener( this.keyListener );
+	}
 
-    private void plotMarkerFrequency(Graphics g)
-    {
-        // clear old text
-        final int x = 5;
-        final int y = 15;
-        
-        // render frequency at current marker position
-        double maxX = xOrigin + bands * scaleX;
-        if ( currentMarkerX != -1 && currentMarkerX >= xOrigin && currentMarkerX <= maxX ) 
-        {
-            g.clearRect( x , y-15 , 150 , g.getFontMetrics().getHeight() );
-            
-            final int band = (int) ( (currentMarkerX-xOrigin) / scaleX );
+	public SpectrumPanel(ISpectrumProvider provider,int windowSize)
+	{
+		this.bands = windowSize/2;
+		addMouseMotionListener( mouseListener );
+		setSpectrumProvider(provider);
+	}
 
-            final String f1 = AudioFile.hertzToString( getFrequencyForBand(band) );
-            g.setColor(Color.BLACK);
-            g.drawString(  f1 , x, y );
-        } 
-    }
+	public void setSpectrumProvider(ISpectrumProvider provider)
+	{
+		this.spectrumProvider = provider;
+		synchronized( REFRESH_THREAD_LOCK ) 
+		{
+			REFRESH_THREAD_LOCK.notifyAll();
+		}
+		refresh();
+	}
 
-    private void plotChart(Graphics g,Spectrum s) 
-    {
-        g.setColor(Color.BLUE);
+	public void refresh() 
+	{
+		final long start = System.currentTimeMillis();
+		
+		final ICallback callback = new ICallback() {
+			
+			@Override
+			public void calculationFinished(ISpectrumProvider provider,
+					Spectrum spectrum) 
+			{
+				final long delta = System.currentTimeMillis() - start;
+				System.out.println("Calculation finished after "+delta);
+				repaintCallback.calculationFinished( provider , spectrum);
+			}
+			
+			@Override
+			public void calculationFailed(ISpectrumProvider provider) {
+				repaintCallback.calculationFailed(provider);
+			}
+		};
+		
+		spectrumProvider.calcSpectrum( callback , this.bands*2 , this.applyWindowFunction );   
+	}
 
-        final double yOffset = s.getMinValue() > 0 ? -s.getMinValue() : s.getMinValue();
+	private void resized(Spectrum s) 
+	{
+		this.width = Math.round(getWidth()*0.8f);
+		this.height = Math.round(getHeight()*0.8f);
 
-        int barWidthInPixels = (int) Math.round(scaleX);
-        if ( barWidthInPixels < 1 ) {
-            barWidthInPixels = 1;
-        }
-        
-        final double[] spectrum = s.getData();
+		this.xOrigin = (int) Math.round( getWidth() * 0.1);
+		this.yOrigin = Math.round( getHeight() *0.9f);
 
-        for ( int band = 0 ; band < bands ; band++ ) 
-        {
-            final int x = (int) Math.floor( xOrigin + band*scaleX); 
+		this.scaleX = width / (double) s.getBands();
+		this.scaleY = height / Math.abs( s.getMaxValue() - s.getMinValue() );
+	}
 
-            double value = spectrum[band]+yOffset;
-            final double y = value*scaleY;
+	protected Spectrum getSpectrum() 
+	{
+		if ( spectrum == null ) {
+			refresh();
+			return null;
+		}
+		return spectrum;
+	}
 
-            final double frequency = getFrequencyForBand( band );
+	@Override
+	public void paint(Graphics g)
+	{
+		super.paint(g);
 
-            g.fillRect( x , (int) Math.round( yOrigin - y ) , barWidthInPixels , (int) Math.round( y ) );
+		currentMarkerX =  -1;
 
-            if ( bands < 32 ) 
-            {
-                // draw label
-                final String f = AudioFile.hertzToString( frequency );
-                final Rectangle2D bounds = g.getFontMetrics().getStringBounds( f , g );
+		Spectrum s = getSpectrum();
+		if ( s != null )
+		{   
+			resized(s);
+			plotChart( g , s );
+			plotMarkerFrequency(g);
+		} else {
+			System.out.println("No spectrum to paint");
+		}
+	}
 
-                g.drawString( f , x + barWidthInPixels/2 - (int) Math.round(bounds.getWidth()/2) , yOrigin + g.getFontMetrics().getHeight() );
-            }
-        }
-    }
+	private void plotMarkerFrequency(Graphics g)
+	{
+		// clear old text
+		final int x = 5;
+		final int y = 15;
 
-    private double getFrequencyForBand(int band) 
-    {
-        return band * getBandwidth();
-    }
+		// render frequency at current marker position
+		double maxX = xOrigin + bands * scaleX;
+		if ( currentMarkerX != -1 && currentMarkerX >= xOrigin && currentMarkerX <= maxX ) 
+		{
+			g.clearRect( x , y-15 , 150 , g.getFontMetrics().getHeight() );
 
-    private double getBandwidth() 
-    {
-        return spectrumProvider.getAudioFile().getFormat().getSampleRate()/2.0/bands;
-    }
+			final int band = (int) ( (currentMarkerX-xOrigin) / scaleX );
+
+			final String f1 = AudioFile.hertzToString( getFrequencyForBand(band) );
+			g.setColor(Color.BLACK);
+			g.drawString(  f1 , x, y );
+		} 
+	}
+
+	private void plotChart(Graphics g,Spectrum s) 
+	{
+		g.setColor(Color.BLUE);
+
+		final double yOffset = s.getMinValue() > 0 ? -s.getMinValue() : s.getMinValue();
+
+		int barWidthInPixels = (int) Math.round(scaleX);
+		if ( barWidthInPixels < 1 ) {
+			barWidthInPixels = 1;
+		}
+
+		final double[] spectrum = s.getData();
+
+		for ( int band = 0 ; band < bands ; band++ ) 
+		{
+			final double frequency = getFrequencyForBand( band );
+			final int x = (int) Math.floor( xOrigin + band*scaleX);
+			
+			if ( ! applyMinValue || spectrum[band] > minValue ) {
+				double value = spectrum[band]+yOffset;
+				final double y = value*scaleY;
+				g.fillRect( x , (int) Math.round( yOrigin - y ) , barWidthInPixels , (int) Math.round( y ) );
+			}
+			
+			if ( bands < 32 ) 
+			{
+				// draw label
+				final String f = AudioFile.hertzToString( frequency );
+				final Rectangle2D bounds = g.getFontMetrics().getStringBounds( f , g );
+
+				g.drawString( f , x + barWidthInPixels/2 - (int) Math.round(bounds.getWidth()/2) , yOrigin + g.getFontMetrics().getHeight() );
+			}
+		}
+	}
+
+	private double getFrequencyForBand(int band) 
+	{
+		return band * getBandwidth();
+	}
+
+	private double getBandwidth() 
+	{
+		return spectrumProvider.getAudioFormat().getSampleRate()/2.0/bands;
+	}    
 }

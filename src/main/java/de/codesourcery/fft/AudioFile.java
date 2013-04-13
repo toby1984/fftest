@@ -16,15 +16,15 @@ public final class AudioFile
     private final AudioFormat format;
     private final long totalFrameCount;
 
-    protected final class AudioDataIterator {
-
+    public static final class AudioDataIterator 
+    {
         private int offset;
         private final byte[] data;
         private final int strideInBytes;
         private final int sampleSizeInBytes;
         private final boolean bigEndian;
 
-        public AudioDataIterator(byte[] data,int channel) 
+        public AudioDataIterator(AudioFormat format, byte[] data,int channel) 
         {
             this.data = data;
             this.sampleSizeInBytes = (int) Math.ceil( format.getSampleSizeInBits() / 8.0f);
@@ -101,7 +101,7 @@ public final class AudioFile
 
     public AudioDataIterator iterator( byte[] data, int channel) 
     {
-        return new AudioDataIterator(data,channel);
+        return new AudioDataIterator(format,data,channel);
     }
 
     public long getDurationInMillis() 

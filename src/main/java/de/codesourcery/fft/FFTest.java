@@ -5,9 +5,12 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
 
+import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
@@ -19,7 +22,7 @@ import org.apache.commons.lang.StringUtils;
 
 public class FFTest
 {
-    private static final JTextField currentFile = new JTextField("/home/tgierke/workspace/fftest/src/main/resources/10000hz.wav") 
+    private static final JTextField currentFile = new JTextField("/home/tobi/workspace/fftest/src/main/resources/10000hz.wav") 
     {
         {
             setEditable( false );
@@ -31,7 +34,13 @@ public class FFTest
         final JFrame frame = new JFrame("FFT");
         
         // setup FFT spectrum panel
-        final SpectrumPanel panel = new SpectrumPanel( new AudioFile( currentFile.getText() ) , 128 ); 
+//      ISpectrumProvider provider = new AudioFileSpectrumProvider( new AudioFile( currentFile.getText() ) );
+        
+        AudioFormat format = new AudioFormat(44100.0f, 16, 1, true , false);
+        MicrophoneSpectrumProvider provider = new MicrophoneSpectrumProvider(format,16384); 
+        provider.start();
+        
+		final SpectrumPanel panel = new SpectrumPanel(  provider ,  32 ); 
         
         panel.setSize( new Dimension(600,400 ) );
         panel.setPreferredSize( new Dimension(600,400 ) );
@@ -66,10 +75,13 @@ public class FFTest
                 final int returnVal = fc.showDialog( frame, "Analyze audio file");                
                 if ( returnVal == JFileChooser.APPROVE_OPTION ) 
                 {
-                    try {
+                    try 
+                    {
                         AudioFile file = new AudioFile( fc.getSelectedFile() );
                         currentFile.setText( fc.getSelectedFile().getAbsolutePath() );
-                        panel.setFile( file );
+                        
+                        AudioFileSpectrumProvider provider = new AudioFileSpectrumProvider( file );
+                        panel.setSpectrumProvider( provider );
                     } 
                     catch (IOException | UnsupportedAudioFileException ex) 
                     {
@@ -109,7 +121,16 @@ public class FFTest
         frame.getContentPane().setLayout( new GridBagLayout() );
         frame.getContentPane().add( combined , cnstrs );
         
-        frame.setDefaultCloseOperation( JFrame.EXIT_ON_CLOSE );
+        frame.addWindowListener( new WindowAdapter() {
+        	@Override
+        	public void windowClosing(WindowEvent e) 
+        	{
+        		panel.dispose();
+        		super.windowClosing(e);
+        	}
+		});
+        
+        frame.setDefaultCloseOperation( JFrame.DISPOSE_ON_CLOSE );
 
         panel.attachKeyListener( frame );
         
