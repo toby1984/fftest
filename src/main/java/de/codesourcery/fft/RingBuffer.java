@@ -60,8 +60,10 @@ public final class RingBuffer {
 			
 			if ( writePtr-readPtr >= bufferCount ) 
 			{
-				System.out.println("LOST "+bytesInBuffer[ptr]+" bytes: write-ptr: "+writePtr+" / read-ptr: "+readPtr);
 				bytesLost += bytesInBuffer[ptr];
+				if ( ( writePtr % 50 ) == 0 ) {
+					System.out.println("Total bytes lost "+bytesLost+" : write-ptr: "+writePtr+" / read-ptr: "+readPtr);
+				}
 			}
 			
 			byte[] tmp = data[ptr];

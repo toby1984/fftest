@@ -59,7 +59,6 @@ public class MicrophoneSpectrumProvider extends AbstractSpectrumProvider {
 			for ( int i = 1 ; i < len ; i++) {
 				result2[i]= result2[i-1] + alphaLow*( data[i] - result2[i-1]);
 			}
-
 			return result2;
 		}
 	}
@@ -88,8 +87,7 @@ public class MicrophoneSpectrumProvider extends AbstractSpectrumProvider {
 	   return y		 
 			 */
 			
-			/*
-			 * - a large α corresponds to a large RC and therefore a low corner frequency of the filter
+			/* - a large α corresponds to a large RC and therefore a low corner frequency of the filter
 			 * - a small α corresponds to a small RC and therefore a high corner frequency of the filter.
 			 */
 			double alphaHigh = RChigh / (RChigh+durationInSeconds); 
@@ -106,7 +104,7 @@ public class MicrophoneSpectrumProvider extends AbstractSpectrumProvider {
 	{
 		this.format = format;
 		final TargetDataLine line = AudioSystem.getTargetDataLine(format);	
-		provider = new AudioProvider(line,format,bufferSizeInSamples,20,writeWaveFile);
+		provider = new AudioProvider(line,format,bufferSizeInSamples,100,writeWaveFile);
 		tmpBuffer = new byte[ provider.getBufferSizeInBytes() ];
 	}
 

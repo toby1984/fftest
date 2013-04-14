@@ -28,6 +28,8 @@ public final class SpectrumPanel extends JPanel {
 	private volatile boolean applyMinValue;  
 	private volatile double minValue;
 	
+	private volatile boolean useLogScale=true;
+	
 	private final Object REFRESH_THREAD_LOCK = new Object();
 
 	private final RefreshThread refreshThread = new RefreshThread();
@@ -228,7 +230,7 @@ outer:
 					Spectrum spectrum) 
 			{
 				final long delta = System.currentTimeMillis() - start;
-				System.out.println("Calculation finished after "+delta);
+//				System.out.println("Calculation finished after "+delta);
 				repaintCallback.calculationFinished( provider , spectrum);
 			}
 			
@@ -318,9 +320,17 @@ outer:
 			final double frequency = getFrequencyForBand( band );
 			final int x = (int) Math.floor( xOrigin + band*scaleX);
 			
-			if ( ! applyMinValue || spectrum[band] > minValue ) {
+			if ( ! applyMinValue || spectrum[band] > minValue ) 
+			{
 				double value = spectrum[band]+yOffset;
-				final double y = value*scaleY;
+				double y;
+				if ( useLogScale ) 
+				{
+					value = 5*Math.log10( value*value );
+					y = (value*value*value)/2500.0d;
+				} else {
+					y = value*scaleY;
+				}
 				g.fillRect( x , (int) Math.round( yOrigin - y ) , barWidthInPixels , (int) Math.round( y ) );
 			}
 			

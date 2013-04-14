@@ -123,7 +123,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 		long time = -System.currentTimeMillis();
 		final double[] jointStereo = getData();
 		time += System.currentTimeMillis();
-		System.out.println("Data aquisition: "+time+" ms");
+//		System.out.println("Data aquisition: "+time+" ms");
 
 		// optionally, apply a windowing function to the sample data        
 		if ( applyWindowingFunction ) {

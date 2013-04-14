@@ -39,7 +39,7 @@ public class FFTest
         ISpectrumProvider provider ;
         if ( useMike ) {
             AudioFormat format = new AudioFormat(44100.0f, 16, 1, true , false);
-            provider = new MicrophoneSpectrumProvider(format,16384,false); 
+            provider = new MicrophoneSpectrumProvider(format,8192,false); 
             ((MicrophoneSpectrumProvider) provider).start();
         } else {
         	provider = new AudioFileSpectrumProvider( new AudioFile( currentFile.getText() ) );
