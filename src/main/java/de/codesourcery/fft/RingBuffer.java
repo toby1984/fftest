@@ -1,25 +1,23 @@
 package de.codesourcery.fft;
 
-import java.util.concurrent.atomic.AtomicLong;
 
 public final class RingBuffer {
 
+	private final Object LOCK = new Object();
+	
 	private final int bufferSize;
 	private final int bufferCount;
 
 	private final byte[][] data;
+	
+	private byte[] writeBuffer;
 
 	private final int bytesInBuffer[];
 
 	private int readPtr = 0;
 	private int writePtr = 0;
 
-	private final AtomicLong bytesWritten = new AtomicLong(0);
-	private final AtomicLong bytesRead = new AtomicLong(0);
-
-	private final Object BUFFER_NOT_EMPTY = new Object();
-
-	private final Object LOCK = new Object();
+	private long bytesLost = 0;
 
 	public interface BufferWriter {
 		public int write(byte[] buffer,int bufferSize);
@@ -31,6 +29,7 @@ public final class RingBuffer {
 		for ( int i = 0 ;i < bufferCount ; i++  ) {
 			data[i] = new byte[ bufferSize ];
 		}
+		this.writeBuffer = new byte[bufferSize];
 		this.bufferCount = bufferCount;
 		this.bufferSize = bufferSize;
 		this.bytesInBuffer = new int[ bufferCount ];
@@ -45,56 +44,49 @@ public final class RingBuffer {
 	}
 
 	public long getBytesLost() {
-		return bytesWritten.get() - bytesRead.get();
+		return bytesLost;
 	}
 
 	public void write(BufferWriter writer) 
 	{
-		synchronized( data[writePtr] ) 
-		{
-			int written = writer.write( data[writePtr] , bufferSize );
-			if ( written == 0 ) {
-				return;
-			}
-			bytesInBuffer[writePtr]=written;
-			bytesWritten.addAndGet( written );
+		final int written = writer.write( writeBuffer , bufferSize );
+		if ( written == 0 ) {
+			return;
 		}
 		
-		synchronized(LOCK) 
+		synchronized( LOCK ) 
 		{
-			writePtr = (writePtr+1) % bufferCount;
-		}
-		synchronized( BUFFER_NOT_EMPTY ) {
-			BUFFER_NOT_EMPTY.notifyAll();
+			final int ptr = writePtr % bufferCount;
+			
+			if ( writePtr-readPtr >= bufferCount ) 
+			{
+				System.out.println("LOST "+bytesInBuffer[ptr]+" bytes: write-ptr: "+writePtr+" / read-ptr: "+readPtr);
+				bytesLost += bytesInBuffer[ptr];
+			}
+			
+			byte[] tmp = data[ptr];
+			data[ptr] = writeBuffer;
+			writeBuffer = tmp;			
+			bytesInBuffer[ptr]=written;
+			writePtr++;
+			LOCK.notifyAll();
 		}		
 	}
 
 	public int read(byte[] target) throws InterruptedException 
 	{
-		int read;
-		int ptr;
-		while(true) 
+		int bytesRead;
+		synchronized( LOCK ) 
 		{
-			synchronized( LOCK ) 
+			while( readPtr == writePtr ) 
 			{
-				if ( readPtr != writePtr ) 
-				{
-					ptr = readPtr;
-					readPtr = (readPtr+1) % bufferCount;					
-					break;
-				}
+				LOCK.wait();
 			}
-			synchronized( BUFFER_NOT_EMPTY ) {
-				BUFFER_NOT_EMPTY.wait();
-			}				
+			final int ptr = readPtr % bufferCount;
+			readPtr++;
+			bytesRead = bytesInBuffer[ ptr ];		
+			System.arraycopy( data[ptr] , 0 , target , 0 , bytesRead );
 		}
-		
-		synchronized( data[ ptr ]) 
-		{
-			read = bytesInBuffer[ptr ];		
-			bytesRead.addAndGet( read );
-			System.arraycopy( data[ptr] , 0 , target , 0 , read );
-		}
-		return read;
+		return bytesRead;
 	}
 }
