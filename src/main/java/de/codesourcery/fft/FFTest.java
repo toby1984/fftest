@@ -31,14 +31,19 @@ public class FFTest
     
     public static void main(String[] args) throws Exception
     {
+    	final boolean useMike = true;
+    	
         final JFrame frame = new JFrame("FFT");
         
         // setup FFT spectrum panel
-//      ISpectrumProvider provider = new AudioFileSpectrumProvider( new AudioFile( currentFile.getText() ) );
-        
-        AudioFormat format = new AudioFormat(44100.0f, 16, 1, true , false);
-        MicrophoneSpectrumProvider provider = new MicrophoneSpectrumProvider(format,16384); 
-        provider.start();
+        ISpectrumProvider provider ;
+        if ( useMike ) {
+            AudioFormat format = new AudioFormat(44100.0f, 16, 1, true , false);
+            provider = new MicrophoneSpectrumProvider(format,16384,false); 
+            ((MicrophoneSpectrumProvider) provider).start();
+        } else {
+        	provider = new AudioFileSpectrumProvider( new AudioFile( currentFile.getText() ) );
+        }
         
 		final SpectrumPanel panel = new SpectrumPanel(  provider ,  32 ); 
         

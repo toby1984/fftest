@@ -1,6 +1,8 @@
 package de.codesourcery.fft;
 
-import java.util.concurrent.locks.ReentrantLock;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
@@ -15,6 +17,8 @@ public class AudioProvider
 {
 	private static final boolean DEBUG = true;
 	private final TargetDataLine line;
+	
+	private final boolean writeWaveFile;
 
 	private final CaptureThread captureThread;
 
@@ -48,7 +52,7 @@ public class AudioProvider
 		{
 			System.out.println("Line info: "+info );
 		}
-		final AudioProvider provider = new AudioProvider(line,format,8000,20);
+		final AudioProvider provider = new AudioProvider(line,format,8000,20,false);
 		
 		long bytesRead = 0;
 		try {
@@ -69,9 +73,10 @@ public class AudioProvider
 		}
 	}
 
-	public AudioProvider(TargetDataLine line , AudioFormat format,int bufferSizeInSamples,int bufferCount) throws LineUnavailableException
+	public AudioProvider(TargetDataLine line , AudioFormat format,int bufferSizeInSamples,int bufferCount,boolean writeWaveFile) throws LineUnavailableException
 	{
 		this.line = line;
+		this.writeWaveFile = writeWaveFile;
 		captureThread = new CaptureThread( line , format , bufferSizeInSamples,bufferCount );
 		captureThread.start();
 	}
@@ -81,7 +86,7 @@ public class AudioProvider
 		private final Object LOCK = new Object();
 
 		private final TargetDataLine line;
-		
+		private final AudioFormat audioFormat;
 		private final RingBuffer ringBuffer;
 		
 		// @GuardedBy( LOCK )
@@ -94,7 +99,7 @@ public class AudioProvider
 			setDaemon(true);
 			setName("audio-capture-thread");
 			this.line = line;
-			
+			this.audioFormat = format;
 			System.out.println("Audio line buffer size: "+line.getBufferSize());
 			
 			final int bufferSizeInBytes = bufferSizeInSamples*(format.getSampleSizeInBits()/8);
@@ -120,19 +125,38 @@ public class AudioProvider
 			}
 		}
 		
-		private final RingBuffer.BufferWriter writer = new RingBuffer.BufferWriter() {
-			
-			@Override
-			public int write(byte[] buffer, int bufferSize) 
-			{
-				return line.read(buffer, 0, bufferSize );
-			}
-		};
-
 		@Override
 		public void run() 
 		{
+			WaveWriter waveWriter = null;
 			try {
+				if ( writeWaveFile ) {
+					waveWriter = new WaveWriter(new File("/home/tobi/tmp/mike.wav" ) , audioFormat );
+				}
+			} catch (FileNotFoundException e1) {
+				e1.printStackTrace();
+			}
+			
+			final WaveWriter finalWaveWriter = waveWriter;
+			try 
+			{
+				final RingBuffer.BufferWriter writer = new RingBuffer.BufferWriter() {
+					
+					@Override
+					public int write(byte[] buffer, int bufferSize) 
+					{
+						int bytesRead = line.read( buffer , 0 , bufferSize );
+						if ( writeWaveFile && finalWaveWriter != null ) {
+							try {
+								finalWaveWriter.write( buffer , 0 , bytesRead );
+							} catch (IOException e) {
+								e.printStackTrace();
+							}
+						}
+						return bytesRead;
+					}
+				};
+				
 				while( true)
 				{
 					synchronized(LOCK) 
@@ -168,6 +192,13 @@ public class AudioProvider
 			{
 				logDebug("Capture thread terminated");
 				line.removeLineListener( this );
+				if ( writeWaveFile && waveWriter != null ) {
+					try {
+						waveWriter.close();
+					} catch(IOException e) {
+						e.printStackTrace();
+					}
+				}
 			}
 		}
 

@@ -24,7 +24,7 @@ public class WaveWriter {
 	{
 		this.outputFile = outputFile;
 		this.format = format;
-		this.out = new FileOutputStream(outputFile.getAbsolutePath()+File.separatorChar+".raw");
+		this.out = new FileOutputStream(outputFile.getAbsolutePath()+".raw");
 	}
 	
 	public void write(byte[] buffer,int offset,int length) throws IOException {
@@ -32,59 +32,63 @@ public class WaveWriter {
 		bytesWritten+=length;
 	}
 	
-	public void close() throws IOException {
+	public void close() throws IOException 
+	{
 		out.close();
 
 		final FileOutputStream wavOut = new FileOutputStream( outputFile );
 		
-		wavOut.write( toASCII("RIFF" ) );
-		long fileSize = bytesWritten-8; // probably wrong => total WAV file size - 8
-		wavOut.write( toUnsignedLong( fileSize ) );
-		wavOut.write( toASCII("WAVE" ) );
+		wavOut.write( toASCII("RIFF" ) ); // 4 bytes
+		long totalFileSize = bytesWritten+4+4+4+2+2+4+4+2+2+4+4;
+		wavOut.write( toUnsignedLong( totalFileSize ) ); 
+		wavOut.write( toASCII("WAVE" ) ); // [ ] 4 bytes
 		
 		// write format
-		wavOut.write( toASCII("fmt " ) );
-		wavOut.write( toUnsignedLong( 16 ) );
+		wavOut.write( toASCII("fmt " ) ); // [ ] 4 bytes
+		wavOut.write( toUnsignedLong( 16 ) ); // [ ] 'fmt' header length , 4 bytes
 		
-		wavOut.write( toUnsignedShort( 0x001 ) ); // PCM
-		wavOut.write( toUnsignedShort( format.getChannels() ) );
-		wavOut.write( toUnsignedLong( (int) format.getSampleRate() ) );
-		wavOut.write( toUnsignedLong( (long) (( format.getSampleSizeInBits() / 8) * format.getSampleRate() * format.getChannels() ) )  );
+		wavOut.write( toUnsignedShort( 0x001 ) ); // [ ] encoding: PCM , 2 bytes
+		wavOut.write( toUnsignedShort( format.getChannels() ) ); // [ ] 2 bytes
+		wavOut.write( toUnsignedLong( (int) format.getSampleRate() ) ); // [ ] 4 bytes
+		wavOut.write( toUnsignedLong( (long) (( format.getSampleSizeInBits() / 8) * format.getSampleRate() * format.getChannels() ) )  ); // [ ] 4 bytes
 		
 		// <Anzahl der Kanäle> · ((<Bits/Sample (eines Kanals)> + 7) / 8)
 		int frameSize = format.getChannels() * (format.getSampleSizeInBits()+7)/8;
-		wavOut.write( toUnsignedShort( frameSize ) );
-		wavOut.write( toUnsignedShort( format.getSampleSizeInBits() ) );
+		wavOut.write( toUnsignedShort( frameSize ) ); // [ ] 2 bytes
+		wavOut.write( toUnsignedShort( format.getSampleSizeInBits() ) ); // [ ] 2 bytes
 		
 		// write data 
-		wavOut.write( toASCII("data" ) );
-		wavOut.write( toUnsignedLong( bytesWritten ) );
+		wavOut.write( toASCII("data" ) ); // [ ] 4 bytes
+		wavOut.write( toUnsignedLong( bytesWritten ) ); // [ ] 4 bytes
 		
 		byte[] buffer = new byte[1024];
-		FileInputStream  in = new FileInputStream( outputFile.getAbsolutePath()+File.separatorChar+".raw" );
+		FileInputStream  in = new FileInputStream( outputFile.getAbsolutePath()+".raw" );
 		int read = 0;
 		while ( ( read = in.read( buffer ) ) > 0 ) 
 		{
 			wavOut.write( buffer , 0 , read );
 		}
 		wavOut.close();
+		System.out.println("*** wrote WAVE file to: "+outputFile.getAbsolutePath());
 	}
 	
 	private byte[] toUnsignedLong(long value) {
 		
 		byte[] result = new byte[4];
-		result[0] = (byte) ((value >> 24) & 0xff);
-		result[1] = (byte) ((value >> 16) & 0xff);
-		result[2] = (byte) ((value >> 8) & 0xff);
-		result[3] = (byte) ( value & 0xff);
+		// LSB first !!
+		result[3] = (byte) ((value >> 24) & 0xff);
+		result[2] = (byte) ((value >> 16) & 0xff);
+		result[1] = (byte) ((value >> 8) & 0xff);
+		result[0] = (byte) ( value & 0xff);
 		return result;
 	}
 	
 	private byte[] toUnsignedShort(int value) {
 		
 		byte[] result = new byte[2];
-		result[0] = (byte) ((value >> 8) & 0xff);
-		result[1] = (byte) ( value & 0xff);
+		// LSB first !!
+		result[1] = (byte) ((value >> 8) & 0xff);
+		result[0] = (byte) ( value & 0xff);
 		return result;
 	}	
 	

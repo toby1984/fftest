@@ -206,6 +206,9 @@ outer:
 
 	public void setSpectrumProvider(ISpectrumProvider provider)
 	{
+		if ( this.spectrumProvider != null ) {
+			this.spectrumProvider.close();
+		}
 		this.spectrumProvider = provider;
 		synchronized( REFRESH_THREAD_LOCK ) 
 		{
