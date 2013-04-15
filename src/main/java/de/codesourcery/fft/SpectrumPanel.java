@@ -8,6 +8,9 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Rectangle2D;
 import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
 import javax.sound.sampled.AudioFormat;
@@ -315,13 +318,26 @@ outer:
 
 			final int band = (int) ( (currentMarkerX - x1Origin) / scaleX1 );
 
+			System.out.println("Band: "+band);
+			
 			final String f1 = AudioFile.hertzToString( getFrequencyForBand(band) );
 			g.setColor(Color.BLACK);
 			g.drawString(  f1 , x, y );
 			
 			Spectrum s = getSpectrum();
-			if ( s != null ) {
+			if ( s != null ) 
+			{
 			    AudioFormat format = spectrumProvider.getAudioFormat();
+			    
+			    final List<FrequencyAndSlot> autoCorr = getTopAutoCorrelationFrequencies( s , format.getSampleRate() );
+			    System.out.println("autoCorr: "+autoCorr);
+			    for ( FrequencyAndSlot a : autoCorr ) {
+			        final int corrX = (int) Math.round( x1Origin + ( a.slot * scaleX1 ) );
+			        g.setColor( Color.RED );
+			        g.drawLine(corrX , y2Origin , corrX , y1Origin );
+			        
+			    }
+			    
 			    /*
 			     * 
 			     * 44100 samples      1 sec
@@ -329,17 +345,88 @@ outer:
 			     * fftSize samples    y sec-
 			     */
 			    final double windowDurationInSeconds = s.getFFTSize() / format.getSampleRate() / 4.0;
-			    System.out.println("Window duration: "+windowDurationInSeconds);
+//			    System.out.println("Window duration: "+windowDurationInSeconds);
 			    final double percentage = ( currentMarkerX - x1Origin) / ( maxX - x1Origin );
+			    
 			    final double currentTime = percentage * windowDurationInSeconds;
+			    
 			    final String freq= AudioFile.hertzToString( 1.0 / currentTime );
 			    
-	            final DecimalFormat df = new DecimalFormat("#####0.0####");
+	            final DecimalFormat df = new DecimalFormat( "#####0.0####" );
 	            g.setColor(Color.BLACK);
+	            
                 g.drawString(  df.format( currentTime ) , x, y+lineHeight );   	            
 	            g.drawString(  freq  , x, y+lineHeight*2 );			    
 			}
 		} 
+	}
+	
+	protected static final class FrequencyAndSlot implements Comparable<FrequencyAndSlot> 
+	{
+	    public final double correlationFactor;
+	    public final int slot;
+	    public final Spectrum spectrum;
+	    public final double sampleRate;
+	    
+        public FrequencyAndSlot(Spectrum spectrum,double sampleRate, double correlationFactor, int slot)
+        {
+            this.spectrum = spectrum;
+            this.sampleRate = sampleRate;
+            this.correlationFactor = correlationFactor;
+            this.slot = slot;
+        }
+        @Override
+        public int compareTo(FrequencyAndSlot o)
+        {
+            return Double.compare( this.correlationFactor , o.correlationFactor );
+        }
+        
+        public double getFrequency() 
+        {
+            final double windowDurationInSeconds = spectrum.getBands() / sampleRate / 2;
+            final double percentage = slot / (double) spectrum.getBands();
+            
+            final double currentTime = percentage * windowDurationInSeconds;
+            return 1.0 / currentTime;
+        }
+        
+        @Override
+        public String toString()
+        {
+            return "AutoCorr( "+slot+" : "+ getFrequency()+")";
+        }
+	}
+	
+	private List<FrequencyAndSlot> getTopAutoCorrelationFrequencies(Spectrum s,double sampleRate) 
+	{
+	    final List<FrequencyAndSlot> candidates = new ArrayList<>();
+	    
+	    final int peakHeight = (int) (1+(s.getBands()*0.1));
+	    
+outer:	    
+	    for ( int i = peakHeight ; i < s.getBands()-peakHeight ; i++ ) 
+	    {
+	        double val2 = s.getAutoCorrelation()[i];
+	        
+	        for ( int j = i-peakHeight ; j < i ; j++ ) {
+	            if ( s.getAutoCorrelation()[j] >= val2 ) {
+	                continue outer;
+	            }
+	        }
+	        
+            for ( int j = i+1 ; j < i+peakHeight ; j++ ) {
+                if ( s.getAutoCorrelation()[j] >= val2 ) {
+                    continue outer;
+                }
+            }	        
+            candidates.add( new FrequencyAndSlot( s , sampleRate , val2 , i ) );
+	    }
+	    Collections.sort( candidates );
+	    Collections.reverse( candidates );
+	    if ( candidates.size() > 7 ) {
+	        return candidates.subList( 0 , 7 );
+	    }
+	    return candidates;
 	}
 	
     private void plotAutoCorrelation(Graphics g,Spectrum s) 
