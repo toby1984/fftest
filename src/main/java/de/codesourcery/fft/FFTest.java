@@ -22,7 +22,7 @@ import org.apache.commons.lang.StringUtils;
 
 public class FFTest
 {
-    private static final JTextField currentFile = new JTextField("/home/tgierke/workspace/fftest/src/main/resources/guitar.wav") 
+    private static final JTextField currentFile = new JTextField("/home/tobi/workspace/fftest/src/main/resources/guitar_e2.wav") 
     {
         {
             setEditable( false );
@@ -45,15 +45,14 @@ public class FFTest
         ISpectrumProvider provider ;
         if ( useMike ) {
             AudioFormat format = new AudioFormat(44100.0f, 16, 1, true , false);
-            provider = new MicrophoneSpectrumProvider(format,8192,processedOut,recordedIn); 
+            provider = new MicrophoneSpectrumProvider(format,4096,processedOut,recordedIn);
             ((MicrophoneSpectrumProvider) provider).start();
         } else {
             AudioFile file = new AudioFile( currentFile.getText() );
             System.out.println( file );
         	provider = new AudioFileSpectrumProvider( file , processedOut );
         }
-        
-		final SpectrumPanel panel = new SpectrumPanel(  provider ,  8192 ); 
+		final SpectrumPanel panel = new SpectrumPanel(  provider ,  1024 ); 
         
         panel.setSize( new Dimension(600,400 ) );
         panel.setPreferredSize( new Dimension(600,400 ) );

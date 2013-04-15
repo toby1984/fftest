@@ -23,7 +23,7 @@ public class MicrophoneSpectrumProvider extends AbstractSpectrumProvider {
 		provider = new MicrophoneAudioProvider(line,format,bufferSizeInSamples,100, micInRawFile );
 		tmpBuffer = new byte[ provider.getBufferSizeInBytes() ];
 	}
-
+	
 	public void start() {
 		provider.startCapturing();
 	}

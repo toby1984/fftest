@@ -8,18 +8,18 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Rectangle2D;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
-import javax.sound.sampled.AudioFormat;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 
 import de.codesourcery.fft.ISpectrumProvider.ICallback;
+import de.codesourcery.fft.Spectrum.FrequencyAndSlot;
 
 public final class SpectrumPanel extends JPanel {
+
+	private final Object REFRESH_THREAD_LOCK = new Object();
 
 	private volatile int currentMarkerX = -1;
 
@@ -27,22 +27,26 @@ public final class SpectrumPanel extends JPanel {
 	private volatile int height;
 	private volatile int x1Origin;
 	private volatile int y1Origin;
-	
-    private volatile int x2Origin;
-    private volatile int y2Origin;
-    
+
+	private volatile int x2Origin;
+	private volatile int y2Origin;
+
 	private volatile double scaleX1;
 	private volatile double scaleY1;
 
 	private volatile boolean applyMinValue;  
 	private volatile double minValue;
-	
-	private volatile boolean useLogScale=true;
-	
-	private final Object REFRESH_THREAD_LOCK = new Object();
+
+	// plot power spectrum using log scale
+	private volatile boolean useLogScale=false;
+
+	private volatile boolean applyFilters;
+	private volatile boolean applyWindowFunction=true;
+	private volatile int bands;
+	private volatile ISpectrumProvider spectrumProvider;	
 
 	private final RefreshThread refreshThread = new RefreshThread();
-	
+
 	protected final class RefreshThread extends Thread 
 	{
 		private volatile boolean terminateRefreshThread;
@@ -57,11 +61,11 @@ public final class SpectrumPanel extends JPanel {
 		public void terminate() 
 		{
 			terminateRefreshThread = true;
-			
+
 			synchronized( REFRESH_THREAD_LOCK ) {
 				REFRESH_THREAD_LOCK.notifyAll();
 			}
-			
+
 			while(true) 
 			{
 				try {
@@ -71,46 +75,46 @@ public final class SpectrumPanel extends JPanel {
 				}
 			}
 		}
-		
+
 		public void run() 
 		{
 			try 
 			{
-outer:				
-				while( ! terminateRefreshThread ) 
-				{
-					synchronized(REFRESH_THREAD_LOCK) 
+				outer:				
+					while( ! terminateRefreshThread ) 
 					{
-						while ( spectrumProvider == null || spectrumProvider.isStatic() ) 
+						synchronized(REFRESH_THREAD_LOCK) 
 						{
-							try {
-								REFRESH_THREAD_LOCK.wait();
-							} 
-							catch (InterruptedException e) 
+							while ( spectrumProvider == null || spectrumProvider.isStatic() ) 
 							{
-								Thread.currentThread().interrupt();
+								try {
+									REFRESH_THREAD_LOCK.wait();
+								} 
+								catch (InterruptedException e) 
+								{
+									Thread.currentThread().interrupt();
+								}
+								continue outer;
 							}
-							continue outer;
+						}
+
+						refresh();
+
+						try 
+						{
+							Thread.sleep( 100 );
+						} 
+						catch (InterruptedException e) {
+							Thread.currentThread().interrupt();
 						}
 					}
-
-					refresh();
-
-					try 
-					{
-						Thread.sleep( 100 );
-					} 
-					catch (InterruptedException e) {
-						Thread.currentThread().interrupt();
-					}
-				}
 			} finally {
 				latch.countDown();
 				System.out.println("Refresh thread terminated");
 			}
 		}
 	}; 
-	
+
 	private volatile Spectrum spectrum;
 
 	private final ICallback repaintCallback = new ICallback() {
@@ -119,7 +123,7 @@ outer:
 		public void calculationFinished(ISpectrumProvider provider, Spectrum spectrum)
 		{
 			SpectrumPanel.this.spectrum = spectrum;
-			
+
 			SwingUtilities.invokeLater( new Runnable()  {
 
 				@Override
@@ -133,19 +137,21 @@ outer:
 		public void calculationFailed(ISpectrumProvider provider) { }
 	};    
 
-	private boolean applyWindowFunction=true;
-
-	private volatile int bands;
-
-	private volatile ISpectrumProvider spectrumProvider;
-
 	private final KeyAdapter keyListener = new KeyAdapter() 
 	{
 		public void keyTyped(java.awt.event.KeyEvent e) 
 		{
-			if ( e.getKeyChar()== 'c') {
+			if ( e.getKeyChar() == 'f' ) 
+			{
+				applyFilters = ! applyFilters;
+				System.out.println("filters enabled: "+applyFilters);
+				refresh();
+			} 
+			else if ( e.getKeyChar()== 'c') 
+			{
 				applyMinValue = false;
 				System.out.println("Cleared min. value");
+				refresh();
 			} 
 			else if ( e.getKeyChar()== 'm') {
 				Spectrum spectrum = getSpectrum();
@@ -201,6 +207,7 @@ outer:
 
 	public void dispose() 
 	{
+		System.out.println("Disposing panel");
 		refreshThread.terminate();
 		spectrumProvider.close();
 	}
@@ -233,41 +240,41 @@ outer:
 	public void refresh() 
 	{
 		final long start = System.currentTimeMillis();
-		
+
 		final ICallback callback = new ICallback() {
-			
+
 			@Override
 			public void calculationFinished(ISpectrumProvider provider,
 					Spectrum spectrum) 
 			{
 				@SuppressWarnings("unused")
-                final long delta = System.currentTimeMillis() - start;
-//				System.out.println("Calculation finished after "+delta);
+				final long delta = System.currentTimeMillis() - start;
+				//				System.out.println("Calculation finished after "+delta);
 				repaintCallback.calculationFinished( provider , spectrum);
 			}
-			
+
 			@Override
 			public void calculationFailed(ISpectrumProvider provider) {
 				repaintCallback.calculationFailed(provider);
 			}
 		};
-		
-		spectrumProvider.calcSpectrum( callback , this.bands*2 , this.applyWindowFunction );   
+
+		spectrumProvider.calcSpectrum( callback , this.bands*2 , this.applyWindowFunction , this.applyFilters );   
 	}
 
 	private void resized(Spectrum s) 
 	{
-	    final int h = getHeight() / 2;
-	    final int w = getWidth();
-	    
+		final int h = getHeight() / 2;
+		final int w = getWidth();
+
 		this.width = Math.round(w * 0.8f);
 		this.height = Math.round( h * 0.8f);
 
 		this.x1Origin = (int) Math.round( w * 0.1);
 		this.y1Origin = Math.round( h *0.9f);
-		
-        this.x2Origin = x1Origin;
-        this.y2Origin = y1Origin+h;
+
+		this.x2Origin = x1Origin;
+		this.y2Origin = y1Origin+h;
 
 		this.scaleX1 = width / (double) s.getBands();
 		this.scaleY1 = height / Math.abs( s.getMaxValue() - s.getMinValue() );
@@ -295,14 +302,14 @@ outer:
 			resized(s);
 			plotPowerSpectrum( g , s );
 			if ( s.getAutoCorrelation() != null ) {
-			    plotAutoCorrelation( g , s );
+				plotAutoCorrelation( g , s );
 			}
 			plotMarkerFrequency(g);
 		} else {
 			System.out.println("No spectrum to paint");
 		}
 	}
-	
+
 	private void plotMarkerFrequency(Graphics g)
 	{
 		// clear old text
@@ -314,149 +321,77 @@ outer:
 		if ( currentMarkerX != -1 && currentMarkerX >= x1Origin && currentMarkerX <= maxX ) 
 		{
 			final int lineHeight = g.getFontMetrics().getHeight();
-            g.clearRect( x , y-15 , 150 , lineHeight*5 );
+			g.clearRect( x , y-15 , 250 , lineHeight*5 );
 
 			final int band = (int) ( (currentMarkerX - x1Origin) / scaleX1 );
 
-			System.out.println("Band: "+band);
-			
 			final String f1 = AudioFile.hertzToString( getFrequencyForBand(band) );
 			g.setColor(Color.BLACK);
 			g.drawString(  f1 , x, y );
-			
+
 			Spectrum s = getSpectrum();
 			if ( s != null ) 
 			{
-			    AudioFormat format = spectrumProvider.getAudioFormat();
-			    
-			    final List<FrequencyAndSlot> autoCorr = getTopAutoCorrelationFrequencies( s , format.getSampleRate() );
-			    System.out.println("autoCorr: "+autoCorr);
-			    for ( FrequencyAndSlot a : autoCorr ) {
-			        final int corrX = (int) Math.round( x1Origin + ( a.slot * scaleX1 ) );
-			        g.setColor( Color.RED );
-			        g.drawLine(corrX , y2Origin , corrX , y1Origin );
-			        
-			    }
-			    
-			    /*
-			     * 
-			     * 44100 samples      1 sec
-			     * -------------- = ---------------   => y = 1 / ( sampleRate / fftSize )
-			     * fftSize samples    y sec-
-			     */
-			    final double windowDurationInSeconds = s.getFFTSize() / format.getSampleRate() / 4.0;
-//			    System.out.println("Window duration: "+windowDurationInSeconds);
-			    final double percentage = ( currentMarkerX - x1Origin) / ( maxX - x1Origin );
-			    
-			    final double currentTime = percentage * windowDurationInSeconds;
-			    
-			    final String freq= AudioFile.hertzToString( 1.0 / currentTime );
-			    
-	            final DecimalFormat df = new DecimalFormat( "#####0.0####" );
-	            g.setColor(Color.BLACK);
-	            
-                g.drawString(  df.format( currentTime ) , x, y+lineHeight );   	            
-	            g.drawString(  freq  , x, y+lineHeight*2 );			    
+				final double windowDurationInSeconds = s.getFFTSize() / s.getSampleRate() / 4.0;
+				final double percentage = ( currentMarkerX - x1Origin) / ( maxX - x1Origin );
+
+				final double currentTime = percentage * windowDurationInSeconds;
+
+				final double freq = 1.0 / currentTime;
+				final String frequencyString = AudioFile.hertzToString( freq );
+
+				final DecimalFormat df = new DecimalFormat( "#####0.0####" );
+				g.setColor(Color.BLACK);
+
+				g.drawString(  df.format( currentTime ) , x, y+lineHeight );
+				String note = TuningHelper.frequencyToKey( freq );
+				if ( note == null ) {
+					note = "out-of-range";
+				}
+				g.drawString(  frequencyString+" ( "+note+" )"  , x, y+lineHeight*2 );			    
 			}
 		} 
 	}
-	
-	protected static final class FrequencyAndSlot implements Comparable<FrequencyAndSlot> 
-	{
-	    public final double correlationFactor;
-	    public final int slot;
-	    public final Spectrum spectrum;
-	    public final double sampleRate;
-	    
-        public FrequencyAndSlot(Spectrum spectrum,double sampleRate, double correlationFactor, int slot)
-        {
-            this.spectrum = spectrum;
-            this.sampleRate = sampleRate;
-            this.correlationFactor = correlationFactor;
-            this.slot = slot;
-        }
-        @Override
-        public int compareTo(FrequencyAndSlot o)
-        {
-            return Double.compare( this.correlationFactor , o.correlationFactor );
-        }
-        
-        public double getFrequency() 
-        {
-            final double windowDurationInSeconds = spectrum.getBands() / sampleRate / 2;
-            final double percentage = slot / (double) spectrum.getBands();
-            
-            final double currentTime = percentage * windowDurationInSeconds;
-            return 1.0 / currentTime;
-        }
-        
-        @Override
-        public String toString()
-        {
-            return "AutoCorr( "+slot+" : "+ getFrequency()+")";
-        }
-	}
-	
-	private List<FrequencyAndSlot> getTopAutoCorrelationFrequencies(Spectrum s,double sampleRate) 
-	{
-	    final List<FrequencyAndSlot> candidates = new ArrayList<>();
-	    
-	    final int peakHeight = (int) (1+(s.getBands()*0.1));
-	    
-outer:	    
-	    for ( int i = peakHeight ; i < s.getBands()-peakHeight ; i++ ) 
-	    {
-	        double val2 = s.getAutoCorrelation()[i];
-	        
-	        for ( int j = i-peakHeight ; j < i ; j++ ) {
-	            if ( s.getAutoCorrelation()[j] >= val2 ) {
-	                continue outer;
-	            }
-	        }
-	        
-            for ( int j = i+1 ; j < i+peakHeight ; j++ ) {
-                if ( s.getAutoCorrelation()[j] >= val2 ) {
-                    continue outer;
-                }
-            }	        
-            candidates.add( new FrequencyAndSlot( s , sampleRate , val2 , i ) );
-	    }
-	    Collections.sort( candidates );
-	    Collections.reverse( candidates );
-	    if ( candidates.size() > 7 ) {
-	        return candidates.subList( 0 , 7 );
-	    }
-	    return candidates;
-	}
-	
-    private void plotAutoCorrelation(Graphics g,Spectrum s) 
-    {
-        g.setColor(Color.GREEN);
 
-        int barWidthInPixels = (int) Math.round(scaleX1);
-        if ( barWidthInPixels < 1 ) {
-            barWidthInPixels = 1;
-        }
+	private void plotAutoCorrelation(Graphics g,Spectrum s) 
+	{
+		g.setColor(Color.GREEN);
 
-        final double[] autoCorr = s.getAutoCorrelation();
-        final int bands = autoCorr.length/2;
-        
-        double min = Double.MAX_VALUE;
-        double max = -Double.MAX_VALUE;
-        
-        for ( int i = 0 ; i < bands ; i++ ) {
-            min = Math.min(min, autoCorr[i] );
-            max = Math.max(max, autoCorr[i] );
-        }
-        final double scaleY = (height/2.0d) / Math.abs( max - min);
-        for ( int band = 0 ; band < bands ; band++ ) 
-        {
-            final int x = (int) Math.floor( x2Origin + band*scaleX1);
-            double y = 2*autoCorr[band]*scaleY;
-//            System.out.println("y="+y+" [ "+autoCorr[band]+")");
-            g.fillRect( x , (int) Math.round( y2Origin - y ) , barWidthInPixels , (int) Math.round( y ) );
-        }
-    }	
+		int barWidthInPixels = (int) Math.round(scaleX1);
+		if ( barWidthInPixels < 1 ) {
+			barWidthInPixels = 1;
+		}
+
+		final double[] autoCorr = s.getAutoCorrelation();
+		final int bands = autoCorr.length/2;
+
+		double min = Double.MAX_VALUE;
+		double max = -Double.MAX_VALUE;
+
+		for ( int i = 1 ; i < bands ; i++ ) {
+			min = Math.min(min, autoCorr[i] );
+			max = Math.max(max, autoCorr[i] );
+		}
+		final double offset = min < 0 ? -min:0;
+		final double scaleY = (height/2.0d) / Math.abs( max - min);
+		for ( int band = 1 ; band < bands ; band++ ) 
+		{
+			final int x = (int) Math.round( x2Origin + band*scaleX1);
+			double y = (autoCorr[band]+offset)*scaleY;
+			g.fillRect( x , (int) Math.round( y2Origin - y ) , barWidthInPixels , (int) Math.round( y ) );
+		}
+
+		final List<FrequencyAndSlot> top = s.getTopAutoCorrelated();
+
+		for ( FrequencyAndSlot a : top ) 
+		{
+			if ( TuningHelper.isValidKey( a ) ) {
+				final int corrX = (int) Math.round( x1Origin + ( a.slot * scaleX1 ) );
+				g.setColor( Color.RED );
+				g.drawLine(corrX , y2Origin , corrX , y1Origin );
+			}
+		}        
+	}	
 
 	private void plotPowerSpectrum(Graphics g,Spectrum s) 
 	{
@@ -472,11 +407,11 @@ outer:
 		final double[] spectrum = s.getData();
 
 		final int bands = s.getBands();
-		for ( int band = 0 ; band < bands ; band++ ) 
+		for ( int band = 1 ; band < bands ; band++ ) 
 		{
 			final double frequency = getFrequencyForBand( band );
 			final int x = (int) Math.floor( x1Origin + band*scaleX1);
-			
+
 			if ( ! applyMinValue || spectrum[band] > minValue ) 
 			{
 				double value = spectrum[band]+yOffset;
@@ -490,7 +425,7 @@ outer:
 				}
 				g.fillRect( x , (int) Math.round( y1Origin - y ) , barWidthInPixels , (int) Math.round( y ) );
 			}
-			
+
 			if ( bands < 32 ) 
 			{
 				// draw label

@@ -5,7 +5,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.IdentityHashMap;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.SynchronousQueue;
@@ -34,15 +33,13 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 
     private final ExecutorService threadPool;
 
-    private final Filter lowPassFilter = new LowPassFilter(5000);
+    private final Filter lowPassFilter = NOP_FILTER; // new LowPassFilter(5000);
     private final Filter highPassFilter = new HighPassFilter(15000);
 
     private final AudioFormat audioFormat;
 
     private final WaveWriter waveWriter;    
     
-    private volatile boolean applyFilters=false;
-
     public static abstract class Filter 
     {
         public abstract double[] filter(double[] data,double windowDurationInSeconds);
@@ -56,16 +53,17 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
         }
     }    
 
-    public static final class LowPassFilter extends Filter {
+    public final class LowPassFilter extends Filter {
 
         private final double RClow;
 
         public LowPassFilter(double cutOffFreq) {
-            this.RClow = 0.9;// 1.0d/(2.0*Math.PI*cutOffFreq);
+            this.RClow = 10;// 1.0d/(2.0*Math.PI*cutOffFreq);
         }
 
         @Override
-        public double[] filter(double[] data, double durationInSeconds) {
+        public double[] filter(double[] data, double durationInSeconds) 
+        {
             final int len = data.length;
             /*
              function lowpass(real[0..n] x, real dt, real RC)
@@ -91,12 +89,13 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
         private final double RChigh;
 
         public HighPassFilter(double cutOffFreq) {
-            this.RChigh = 0.001; // 1.0d/(2.0*Math.PI*cutOffFreq);
+            this.RChigh = 50; // 1.0d/(2.0*Math.PI*cutOffFreq);
         }
 
         @Override
         public double[] filter(double[] data, double durationInSeconds) 
         {
+        	durationInSeconds *= 0.1;
             final int len = data.length;
             /*
      // Return RC high-pass filter output samples, given input samples,
@@ -123,10 +122,6 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
         }
     }    
     
-    public void setFilterInput(boolean yesNo) {
-        this.applyFilters = yesNo;
-    }
-
     public AbstractSpectrumProvider(AudioFormat audioFormat,File waveFile) throws FileNotFoundException 
     {
         if ( waveFile != null ) 
@@ -175,16 +170,17 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
     }
 
     @Override
-    public final void calcSpectrum(final ICallback callback,final int fftSize,final boolean applyWindowingFunction) 
+    public final void calcSpectrum(final ICallback callback,final int fftSize,final boolean applyWindowingFunction,boolean applyFilters) 
     {
         Spectrum tmp = null;
         synchronized(LOCK) 
         {
-            if ( ! isStatic() || spectrum == null || spectrum.getFFTSize() != fftSize || spectrum.isWindowFunctionApplied() != applyWindowingFunction )
+            if ( ! isStatic() || spectrum == null || spectrum.getFFTSize() != fftSize || 
+            		spectrum.isWindowFunctionApplied() != applyWindowingFunction || spectrum.isFiltersApplied() != applyFilters )
             {
                 if ( ! pendingRequests.containsKey( callback ) )
                 {
-                    runInBackground(callback, fftSize, applyWindowingFunction);
+                    runInBackground(callback, fftSize, applyWindowingFunction,applyFilters);
                 } else {
                     System.out.println("Calculation still pending");
                 }
@@ -198,7 +194,9 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
         }
     }
 
-    public void close() {
+    public void close() 
+    {
+    	System.out.println("Terminating worker pool");
         threadPool.shutdownNow();
 
         if ( waveWriter != null ) {
@@ -210,7 +208,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
         }   		
     }
 
-    private void runInBackground(final ICallback callback, final int fftSize, final boolean applyWindowingFunction)
+    private void runInBackground(final ICallback callback, final int fftSize, final boolean applyWindowingFunction,final boolean applyFilters)
     {
         pendingRequests.put( callback , DUMMY );
         threadPool.submit( new Runnable() {
@@ -220,7 +218,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
             {
                 Spectrum result=null;
                 try {
-                    result = calculateSpectrum(fftSize,applyWindowingFunction);
+                    result = calculateSpectrum(fftSize,applyWindowingFunction,applyFilters);
                 } 
                 finally 
                 {
@@ -257,7 +255,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
         return lowPassFilter.filter( highPassFilter.filter( buffer , durationInSeconds ) , durationInSeconds );
     }
 
-    protected final synchronized Spectrum calculateSpectrum(final int fftSize,final boolean applyWindowingFunction )
+    protected final synchronized Spectrum calculateSpectrum(final int fftSize,final boolean applyWindowingFunction , boolean applyFilters )
     {
         // aquire sample data
         @SuppressWarnings("unused")
@@ -336,7 +334,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
         double max = -Double.MAX_VALUE;
         double min = Double.MAX_VALUE;
 
-        for ( int i = 0 ; i < fftSize ; i++ ) 
+        for ( int i = 1 ; i < fftSize ; i++ ) 
         {
             final double tmp = spectrum[i] / windowCount;
             spectrum[i] = tmp;
@@ -344,8 +342,9 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
             max = Math.max( max , tmp );            
         }
         try {
-            return new Spectrum( spectrum , getAutoCorrelation( spectrum , fftSize ) , fftSize , applyWindowingFunction , min , max );
-        } catch(RuntimeException e) {
+            return new Spectrum( spectrum , getAutoCorrelation( spectrum , fftSize ) , fftSize , getAudioFormat().getSampleRate() , applyWindowingFunction , min , max , applyFilters);
+        } 
+        catch(RuntimeException e) {
             e.printStackTrace();
             throw e;
         }

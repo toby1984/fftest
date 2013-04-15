@@ -11,13 +11,11 @@ public interface ISpectrumProvider
         public void calculationFinished(ISpectrumProvider provider,Spectrum spectrum);
     }
     
-    public void setFilterInput(boolean yesNo);
-    
     public void close();
     
     public AudioFormat getAudioFormat(); 
     
-    public void calcSpectrum(ICallback callback,int fftSize,boolean applyWindowingFunction);
+    public void calcSpectrum(ICallback callback,int fftSize,boolean applyWindowingFunction,boolean applyFilters);
     
     public boolean isStatic();
 }
