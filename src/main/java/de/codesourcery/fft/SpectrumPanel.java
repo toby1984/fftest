@@ -7,8 +7,10 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Rectangle2D;
+import java.text.DecimalFormat;
 import java.util.concurrent.CountDownLatch;
 
+import javax.sound.sampled.AudioFormat;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 
@@ -20,10 +22,14 @@ public final class SpectrumPanel extends JPanel {
 
 	private volatile int width;
 	private volatile int height;
-	private volatile int xOrigin;
-	private volatile int yOrigin;
-	private volatile double scaleX;
-	private volatile double scaleY;
+	private volatile int x1Origin;
+	private volatile int y1Origin;
+	
+    private volatile int x2Origin;
+    private volatile int y2Origin;
+    
+	private volatile double scaleX1;
+	private volatile double scaleY1;
 
 	private volatile boolean applyMinValue;  
 	private volatile double minValue;
@@ -126,7 +132,7 @@ outer:
 
 	private boolean applyWindowFunction=true;
 
-	private int bands;
+	private volatile int bands;
 
 	private volatile ISpectrumProvider spectrumProvider;
 
@@ -152,11 +158,13 @@ outer:
 				refresh();
 			} else if ( e.getKeyChar() == '+' && bands <= 65535 ) {
 				bands = bands << 1;
+				System.out.println("FFT bands: "+bands);
 				refresh();
 			} 
 			else if ( e.getKeyChar() == '-' && bands >= 2 ) 
 			{
 				bands = bands >> 1;
+				System.out.println("FFT bands: "+bands);
 				refresh();
 			} else {
 				System.out.println("IGNORED KEYPRESS: '"+e.getKeyChar()+"'");
@@ -169,18 +177,18 @@ outer:
 		@Override
 		public void mouseMoved( MouseEvent e)
 		{
-			double maxX = xOrigin + bands*scaleX;
+			double maxX = x1Origin + bands*scaleX1;
 
-			if ( e.getX() >= xOrigin && e.getX() < maxX ) 
+			if ( e.getX() >= x1Origin && e.getX() < maxX ) 
 			{
 				Graphics graphics = getGraphics();
 				graphics.setXORMode(Color.WHITE);                    
 				if ( currentMarkerX != -1 ) 
 				{
-					graphics.drawLine( currentMarkerX , yOrigin , currentMarkerX , 0 );
+					graphics.drawLine( currentMarkerX , y2Origin , currentMarkerX , 0 );
 				}
 				currentMarkerX = e.getX();
-				graphics.drawLine( currentMarkerX , yOrigin , currentMarkerX , 0 );
+				graphics.drawLine( currentMarkerX , y2Origin , currentMarkerX , 0 );
 				graphics.setPaintMode();    
 
 				plotMarkerFrequency(graphics);
@@ -229,7 +237,8 @@ outer:
 			public void calculationFinished(ISpectrumProvider provider,
 					Spectrum spectrum) 
 			{
-				final long delta = System.currentTimeMillis() - start;
+				@SuppressWarnings("unused")
+                final long delta = System.currentTimeMillis() - start;
 //				System.out.println("Calculation finished after "+delta);
 				repaintCallback.calculationFinished( provider , spectrum);
 			}
@@ -245,14 +254,20 @@ outer:
 
 	private void resized(Spectrum s) 
 	{
-		this.width = Math.round(getWidth()*0.8f);
-		this.height = Math.round(getHeight()*0.8f);
+	    final int h = getHeight() / 2;
+	    final int w = getWidth();
+	    
+		this.width = Math.round(w * 0.8f);
+		this.height = Math.round( h * 0.8f);
 
-		this.xOrigin = (int) Math.round( getWidth() * 0.1);
-		this.yOrigin = Math.round( getHeight() *0.9f);
+		this.x1Origin = (int) Math.round( w * 0.1);
+		this.y1Origin = Math.round( h *0.9f);
+		
+        this.x2Origin = x1Origin;
+        this.y2Origin = y1Origin+h;
 
-		this.scaleX = width / (double) s.getBands();
-		this.scaleY = height / Math.abs( s.getMaxValue() - s.getMinValue() );
+		this.scaleX1 = width / (double) s.getBands();
+		this.scaleY1 = height / Math.abs( s.getMaxValue() - s.getMinValue() );
 	}
 
 	protected Spectrum getSpectrum() 
@@ -275,13 +290,16 @@ outer:
 		if ( s != null )
 		{   
 			resized(s);
-			plotChart( g , s );
+			plotPowerSpectrum( g , s );
+			if ( s.getAutoCorrelation() != null ) {
+			    plotAutoCorrelation( g , s );
+			}
 			plotMarkerFrequency(g);
 		} else {
 			System.out.println("No spectrum to paint");
 		}
 	}
-
+	
 	private void plotMarkerFrequency(Graphics g)
 	{
 		// clear old text
@@ -289,36 +307,88 @@ outer:
 		final int y = 15;
 
 		// render frequency at current marker position
-		double maxX = xOrigin + bands * scaleX;
-		if ( currentMarkerX != -1 && currentMarkerX >= xOrigin && currentMarkerX <= maxX ) 
+		double maxX = x1Origin + bands * scaleX1;
+		if ( currentMarkerX != -1 && currentMarkerX >= x1Origin && currentMarkerX <= maxX ) 
 		{
-			g.clearRect( x , y-15 , 150 , g.getFontMetrics().getHeight() );
+			final int lineHeight = g.getFontMetrics().getHeight();
+            g.clearRect( x , y-15 , 150 , lineHeight*5 );
 
-			final int band = (int) ( (currentMarkerX-xOrigin) / scaleX );
+			final int band = (int) ( (currentMarkerX - x1Origin) / scaleX1 );
 
 			final String f1 = AudioFile.hertzToString( getFrequencyForBand(band) );
 			g.setColor(Color.BLACK);
 			g.drawString(  f1 , x, y );
+			
+			Spectrum s = getSpectrum();
+			if ( s != null ) {
+			    AudioFormat format = spectrumProvider.getAudioFormat();
+			    /*
+			     * 
+			     * 44100 samples      1 sec
+			     * -------------- = ---------------   => y = 1 / ( sampleRate / fftSize )
+			     * fftSize samples    y sec-
+			     */
+			    final double windowDurationInSeconds = s.getFFTSize() / format.getSampleRate() / 4.0;
+			    System.out.println("Window duration: "+windowDurationInSeconds);
+			    final double percentage = ( currentMarkerX - x1Origin) / ( maxX - x1Origin );
+			    final double currentTime = percentage * windowDurationInSeconds;
+			    final String freq= AudioFile.hertzToString( 1.0 / currentTime );
+			    
+	            final DecimalFormat df = new DecimalFormat("#####0.0####");
+	            g.setColor(Color.BLACK);
+                g.drawString(  df.format( currentTime ) , x, y+lineHeight );   	            
+	            g.drawString(  freq  , x, y+lineHeight*2 );			    
+			}
 		} 
 	}
+	
+    private void plotAutoCorrelation(Graphics g,Spectrum s) 
+    {
+        g.setColor(Color.GREEN);
 
-	private void plotChart(Graphics g,Spectrum s) 
+        int barWidthInPixels = (int) Math.round(scaleX1);
+        if ( barWidthInPixels < 1 ) {
+            barWidthInPixels = 1;
+        }
+
+        final double[] autoCorr = s.getAutoCorrelation();
+        final int bands = autoCorr.length/2;
+        
+        double min = Double.MAX_VALUE;
+        double max = -Double.MAX_VALUE;
+        
+        for ( int i = 0 ; i < bands ; i++ ) {
+            min = Math.min(min, autoCorr[i] );
+            max = Math.max(max, autoCorr[i] );
+        }
+        final double scaleY = (height/2.0d) / Math.abs( max - min);
+        for ( int band = 0 ; band < bands ; band++ ) 
+        {
+            final int x = (int) Math.floor( x2Origin + band*scaleX1);
+            double y = 2*autoCorr[band]*scaleY;
+//            System.out.println("y="+y+" [ "+autoCorr[band]+")");
+            g.fillRect( x , (int) Math.round( y2Origin - y ) , barWidthInPixels , (int) Math.round( y ) );
+        }
+    }	
+
+	private void plotPowerSpectrum(Graphics g,Spectrum s) 
 	{
 		g.setColor(Color.BLUE);
 
 		final double yOffset = s.getMinValue() > 0 ? -s.getMinValue() : s.getMinValue();
 
-		int barWidthInPixels = (int) Math.round(scaleX);
+		int barWidthInPixels = (int) Math.round(scaleX1);
 		if ( barWidthInPixels < 1 ) {
 			barWidthInPixels = 1;
 		}
 
 		final double[] spectrum = s.getData();
 
+		final int bands = s.getBands();
 		for ( int band = 0 ; band < bands ; band++ ) 
 		{
 			final double frequency = getFrequencyForBand( band );
-			final int x = (int) Math.floor( xOrigin + band*scaleX);
+			final int x = (int) Math.floor( x1Origin + band*scaleX1);
 			
 			if ( ! applyMinValue || spectrum[band] > minValue ) 
 			{
@@ -326,12 +396,12 @@ outer:
 				double y;
 				if ( useLogScale ) 
 				{
-					value = 5*Math.log10( value*value );
+					value = 4*Math.log10( value*value );
 					y = (value*value*value)/2500.0d;
 				} else {
-					y = value*scaleY;
+					y = value*scaleY1;
 				}
-				g.fillRect( x , (int) Math.round( yOrigin - y ) , barWidthInPixels , (int) Math.round( y ) );
+				g.fillRect( x , (int) Math.round( y1Origin - y ) , barWidthInPixels , (int) Math.round( y ) );
 			}
 			
 			if ( bands < 32 ) 
@@ -340,7 +410,7 @@ outer:
 				final String f = AudioFile.hertzToString( frequency );
 				final Rectangle2D bounds = g.getFontMetrics().getStringBounds( f , g );
 
-				g.drawString( f , x + barWidthInPixels/2 - (int) Math.round(bounds.getWidth()/2) , yOrigin + g.getFontMetrics().getHeight() );
+				g.drawString( f , x + barWidthInPixels/2 - (int) Math.round(bounds.getWidth()/2) , y1Origin + g.getFontMetrics().getHeight() );
 			}
 		}
 	}

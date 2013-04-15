@@ -11,6 +11,8 @@ public interface ISpectrumProvider
         public void calculationFinished(ISpectrumProvider provider,Spectrum spectrum);
     }
     
+    public void setFilterInput(boolean yesNo);
+    
     public void close();
     
     public AudioFormat getAudioFormat(); 

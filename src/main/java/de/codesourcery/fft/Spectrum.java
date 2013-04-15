@@ -13,10 +13,16 @@ public final class Spectrum
     private final double minValue;
     private final double maxValue;
     
-    public Spectrum(double[] data, int fftSize,boolean windowFunctionApplied,double minValue,double maxValue)
+    private final double[] autoCorrelation;
+    
+    public Spectrum(double[] data, double[] autoCorrelation,int fftSize,boolean windowFunctionApplied,double minValue,double maxValue)
     {
         this.data = data;
+        if ( ( fftSize >> 1 ) << 1 != fftSize ) {
+            throw new IllegalArgumentException("FFT size needs to be 2^x");
+        }
         this.fftSize = fftSize;
+        this.autoCorrelation = autoCorrelation;
         this.windowFunctionApplied=windowFunctionApplied;
         this.bands = fftSize/2;
         this.minValue = minValue;
@@ -30,6 +36,11 @@ public final class Spectrum
 				+ ", bands=" + bands + ", minValue=" + minValue + ", maxValue="
 				+ maxValue + "data=" + Arrays.toString(data) + ", ]";
 	}
+    
+    public double[] getAutoCorrelation()
+    {
+        return autoCorrelation;
+    }
 
 	public double getMinValue()
     {

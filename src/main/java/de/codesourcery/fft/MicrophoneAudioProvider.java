@@ -13,37 +13,17 @@ import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.Mixer;
 import javax.sound.sampled.TargetDataLine;
 
-public class AudioProvider 
+public class MicrophoneAudioProvider 
 {
 	private static final boolean DEBUG = true;
 	private final TargetDataLine line;
 	
-	private final boolean writeWaveFile;
+	private final File waveFile;
 
 	private final CaptureThread captureThread;
 
 	public static void main(String[] args) throws LineUnavailableException, InterruptedException 
 	{
-//		Mixer defaultMixer=null;
-//		for ( Info mixer : AudioSystem.getMixerInfo() ) 
-//		{
-//			logDebug("Got mixer: "+mixer.getName());
-//			Mixer mixerInstance = AudioSystem.getMixer( mixer );
-//			for ( javax.sound.sampled.Line.Info line : mixerInstance.getTargetLineInfo() )
-//			{
-//				logDebug("Got target line "+line);
-//			}
-//			
-//			if ( defaultMixer == null )
-//			{
-//				defaultMixer = AudioSystem.getMixer( mixer );
-//			}
-//		}
-//		
-//		if ( defaultMixer == null ) {
-//			throw new RuntimeException("Failed to locate default mixer");
-//		}
-		
 		final AudioFormat format = new AudioFormat(8000, 16, 1, true , true);
 		final TargetDataLine line = AudioSystem.getTargetDataLine(format);	
 		
@@ -52,7 +32,7 @@ public class AudioProvider
 		{
 			System.out.println("Line info: "+info );
 		}
-		final AudioProvider provider = new AudioProvider(line,format,8000,20,false);
+		final MicrophoneAudioProvider provider = new MicrophoneAudioProvider(line,format,8000,20,null);
 		
 		long bytesRead = 0;
 		try {
@@ -73,10 +53,10 @@ public class AudioProvider
 		}
 	}
 
-	public AudioProvider(TargetDataLine line , AudioFormat format,int bufferSizeInSamples,int bufferCount,boolean writeWaveFile) throws LineUnavailableException
+	public MicrophoneAudioProvider(TargetDataLine line , AudioFormat format,int bufferSizeInSamples,int bufferCount,File waveFile) throws LineUnavailableException
 	{
 		this.line = line;
-		this.writeWaveFile = writeWaveFile;
+		this.waveFile = waveFile;
 		captureThread = new CaptureThread( line , format , bufferSizeInSamples,bufferCount );
 		captureThread.start();
 	}
@@ -130,8 +110,8 @@ public class AudioProvider
 		{
 			WaveWriter waveWriter = null;
 			try {
-				if ( writeWaveFile ) {
-					waveWriter = new WaveWriter(new File("/home/tobi/tmp/mike.wav" ) , audioFormat );
+				if ( waveFile != null ) {
+					waveWriter = new WaveWriter( waveFile , audioFormat );
 				}
 			} catch (FileNotFoundException e1) {
 				e1.printStackTrace();
@@ -146,7 +126,7 @@ public class AudioProvider
 					public int write(byte[] buffer, int bufferSize) 
 					{
 						int bytesRead = line.read( buffer , 0 , bufferSize );
-						if ( writeWaveFile && finalWaveWriter != null ) {
+						if ( waveFile != null && finalWaveWriter != null ) {
 							try {
 								finalWaveWriter.write( buffer , 0 , bytesRead );
 							} catch (IOException e) {
@@ -192,7 +172,7 @@ public class AudioProvider
 			{
 				logDebug("Capture thread terminated");
 				line.removeLineListener( this );
-				if ( writeWaveFile && waveWriter != null ) {
+				if ( waveFile != null && waveWriter != null ) {
 					try {
 						waveWriter.close();
 					} catch(IOException e) {

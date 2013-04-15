@@ -22,7 +22,7 @@ import org.apache.commons.lang.StringUtils;
 
 public class FFTest
 {
-    private static final JTextField currentFile = new JTextField("/home/tobi/workspace/fftest/src/main/resources/10000hz.wav") 
+    private static final JTextField currentFile = new JTextField("/home/tgierke/workspace/fftest/src/main/resources/guitar.wav") 
     {
         {
             setEditable( false );
@@ -31,21 +31,29 @@ public class FFTest
     
     public static void main(String[] args) throws Exception
     {
-    	final boolean useMike = true;
+    	final boolean useMike = false;
     	
         final JFrame frame = new JFrame("FFT");
+        
+//        final File recordedIn = new File("/home/tgierke/tmp/recorded.wav");
+//        final File processedOut = new File("/home/tgierke/tmp/processed.wav");
+        
+        final File recordedIn = null;
+        final File processedOut = null;
         
         // setup FFT spectrum panel
         ISpectrumProvider provider ;
         if ( useMike ) {
             AudioFormat format = new AudioFormat(44100.0f, 16, 1, true , false);
-            provider = new MicrophoneSpectrumProvider(format,8192,false); 
+            provider = new MicrophoneSpectrumProvider(format,8192,processedOut,recordedIn); 
             ((MicrophoneSpectrumProvider) provider).start();
         } else {
-        	provider = new AudioFileSpectrumProvider( new AudioFile( currentFile.getText() ) );
+            AudioFile file = new AudioFile( currentFile.getText() );
+            System.out.println( file );
+        	provider = new AudioFileSpectrumProvider( file , processedOut );
         }
         
-		final SpectrumPanel panel = new SpectrumPanel(  provider ,  32 ); 
+		final SpectrumPanel panel = new SpectrumPanel(  provider ,  8192 ); 
         
         panel.setSize( new Dimension(600,400 ) );
         panel.setPreferredSize( new Dimension(600,400 ) );
@@ -83,9 +91,10 @@ public class FFTest
                     try 
                     {
                         AudioFile file = new AudioFile( fc.getSelectedFile() );
+                        System.out.println( file );
                         currentFile.setText( fc.getSelectedFile().getAbsolutePath() );
                         
-                        AudioFileSpectrumProvider provider = new AudioFileSpectrumProvider( file );
+                        AudioFileSpectrumProvider provider = new AudioFileSpectrumProvider( file , null );
                         panel.setSpectrumProvider( provider );
                     } 
                     catch (IOException | UnsupportedAudioFileException ex) 
@@ -144,7 +153,7 @@ public class FFTest
         
         combined.setFocusable( true );
         panel.attachKeyListener( combined );
-//        panel.attachKeyListener( frame );
+//      panel.attachKeyListener( frame );
         
         frame.pack();
         frame.setVisible( true );

@@ -32,6 +32,35 @@ public class WaveWriter {
 		bytesWritten+=length;
 	}
 	
+    public void write(double[] buffer,int offset,int length) throws IOException 
+    {
+        final int sampleBits = format.getSampleSizeInBits();
+        final byte[] writeBuffer;
+        switch( sampleBits ) 
+        {
+            case 8:
+                writeBuffer = new byte[ length ];
+                for ( int i = 0 ; i < length ; i++ ) {
+                    writeBuffer[i] = (byte) buffer[offset+i];
+                }
+                break;
+            case 16:
+                writeBuffer = new byte[ length*2 ];
+                int ptr = 0;
+                for ( int i = 0 ; i < length ; i++ ) 
+                {
+                    // LSB first
+                    writeBuffer[ptr++] = (byte) ( ( (int) buffer[offset+i] ) & 0xff);
+                    writeBuffer[ptr++] = (byte) ( ( ( (int) buffer[offset+i] ) >> 8 ) & 0xff);
+                }                
+                break;
+            default:
+                throw new UnsupportedOperationException("Not implemented: writing "+sampleBits+"-bit samples");
+        }
+        out.write( writeBuffer , 0  , writeBuffer.length );
+        bytesWritten+=length;
+    }	
+	
 	public void close() throws IOException 
 	{
 		out.close();
@@ -62,13 +91,18 @@ public class WaveWriter {
 		wavOut.write( toUnsignedLong( bytesWritten ) ); // [ ] 4 bytes
 		
 		byte[] buffer = new byte[1024];
-		FileInputStream  in = new FileInputStream( outputFile.getAbsolutePath()+".raw" );
-		int read = 0;
-		while ( ( read = in.read( buffer ) ) > 0 ) 
+		
+		try ( FileInputStream  in = new FileInputStream( outputFile.getAbsolutePath()+".raw" ) ) 
 		{
-			wavOut.write( buffer , 0 , read );
+    		int read = 0;
+    		while ( ( read = in.read( buffer ) ) > 0 ) 
+    		{
+    			wavOut.write( buffer , 0 , read );
+    		}
+		} 
+		finally {
+            wavOut.close();		    
 		}
-		wavOut.close();
 		System.out.println("*** wrote WAVE file to: "+outputFile.getAbsolutePath());
 	}
 	

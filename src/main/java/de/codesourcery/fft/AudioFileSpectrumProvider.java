@@ -1,6 +1,7 @@
 package de.codesourcery.fft;
 
-import javax.sound.sampled.AudioFormat;
+import java.io.File;
+import java.io.FileNotFoundException;
 
 import de.codesourcery.fft.AudioFile.AudioDataIterator;
 
@@ -8,7 +9,9 @@ public class AudioFileSpectrumProvider extends AbstractSpectrumProvider
 {
     private volatile AudioFile file;
     
-    public AudioFileSpectrumProvider(AudioFile file) {
+    public AudioFileSpectrumProvider(AudioFile file,File waveFile) throws FileNotFoundException 
+    {
+        super(file.getFormat(),waveFile);
         this.file = file;
     }
     
@@ -23,12 +26,6 @@ public class AudioFileSpectrumProvider extends AbstractSpectrumProvider
         invalidateCache();
     }
     
-    @Override
-    public AudioFormat getAudioFormat() 
-    {
-        return file.getFormat();
-    }    
-    
     protected final double[] getData() 
     {
         // read whole file in one go
@@ -40,8 +37,8 @@ public class AudioFileSpectrumProvider extends AbstractSpectrumProvider
         }
 
         // join data from all channels by summing them up and taking the arithmetic average
-        // final int totalSampleCount = (int) Math.ceil( file.getTotalFrameCount()* ( file.getSamplesPerFrame() / file.getFormat().getChannels() ));
-        final int totalSampleCount = 16384;
+         final int totalSampleCount = (int) Math.ceil( file.getTotalFrameCount()* ( file.getSamplesPerFrame() / file.getFormat().getChannels() ));
+//        final int totalSampleCount = 16384;
         
         final double channels = file.getFormat().getChannels();
         final double[] jointStereo = new double[ totalSampleCount ]; // 16-bit samples
