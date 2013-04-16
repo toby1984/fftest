@@ -38,7 +38,7 @@ public final class SpectrumPanel extends JPanel {
 	private volatile double minValue;
 
 	// plot power spectrum using log scale
-	private volatile boolean useLogScale=false;
+	private volatile boolean useLogScale=true;
 
 	private volatile boolean applyFilters;
 	private volatile boolean applyWindowFunction=true;
@@ -71,7 +71,7 @@ public final class SpectrumPanel extends JPanel {
 				try {
 					latch.await();
 					break;
-				} catch (InterruptedException e) {
+				} catch (Exception e) {
 				}
 			}
 		}
@@ -98,7 +98,12 @@ public final class SpectrumPanel extends JPanel {
 							}
 						}
 
-						refresh();
+						try {
+						    refresh();
+						} 
+						catch(Exception e) {
+						    e.printStackTrace();
+						}
 
 						try 
 						{
@@ -217,9 +222,10 @@ public final class SpectrumPanel extends JPanel {
 		c.addKeyListener( this.keyListener );
 	}
 
-	public SpectrumPanel(ISpectrumProvider provider,int windowSize)
+	public SpectrumPanel(ISpectrumProvider provider,int windowSize,boolean applyFilters)
 	{
 		this.bands = windowSize/2;
+		this.applyFilters = applyFilters;
 		addMouseMotionListener( mouseListener );
 		setSpectrumProvider(provider);
 	}
@@ -277,7 +283,7 @@ public final class SpectrumPanel extends JPanel {
 		this.y2Origin = y1Origin+h;
 
 		this.scaleX1 = width / (double) s.getBands();
-		this.scaleY1 = height / Math.abs( s.getMaxValue() - s.getMinValue() );
+		this.scaleY1 = h / Math.abs( s.getMaxValue() - s.getMinValue() );
 	}
 
 	protected Spectrum getSpectrum() 
@@ -290,9 +296,9 @@ public final class SpectrumPanel extends JPanel {
 	}
 
 	@Override
-	public void paint(Graphics g)
+	public void paintComponent(Graphics g)
 	{
-		super.paint(g);
+		super.paintComponent(g);
 
 		currentMarkerX =  -1;
 
@@ -372,12 +378,15 @@ public final class SpectrumPanel extends JPanel {
 			min = Math.min(min, autoCorr[i] );
 			max = Math.max(max, autoCorr[i] );
 		}
-		final double offset = min < 0 ? -min:0;
-		final double scaleY = (height/2.0d) / Math.abs( max - min);
+		final double scaleY = height / 4.0 / Math.abs( max - min);
+        final double offset = min < 0 ? -min*scaleY:0;		
 		for ( int band = 1 ; band < bands ; band++ ) 
 		{
 			final int x = (int) Math.round( x2Origin + band*scaleX1);
 			double y = (autoCorr[band]+offset)*scaleY;
+			if ( y > height ) {
+			    y = height;
+			}
 			g.fillRect( x , (int) Math.round( y2Origin - y ) , barWidthInPixels , (int) Math.round( y ) );
 		}
 
@@ -437,6 +446,10 @@ public final class SpectrumPanel extends JPanel {
 		}
 	}
 
+	public void setApplyFilters(boolean yesNo) {
+	    this.applyFilters = yesNo;
+	}
+	
 	private double getFrequencyForBand(int band) 
 	{
 		return band * getBandwidth();

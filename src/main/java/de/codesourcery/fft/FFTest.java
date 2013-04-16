@@ -11,6 +11,7 @@ import java.io.File;
 import java.io.IOException;
 
 import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
@@ -22,7 +23,7 @@ import org.apache.commons.lang.StringUtils;
 
 public class FFTest
 {
-    private static final JTextField currentFile = new JTextField("/home/tobi/workspace/fftest/src/main/resources/guitar_e2.wav") 
+    private static final JTextField currentFile = new JTextField("classpath:/guitar_e2.wav") 
     {
         {
             setEditable( false );
@@ -31,7 +32,7 @@ public class FFTest
     
     public static void main(String[] args) throws Exception
     {
-    	final boolean useMike = false;
+    	final boolean useMike = args.length > 0;
     	
         final JFrame frame = new JFrame("FFT");
         
@@ -42,18 +43,24 @@ public class FFTest
         final File processedOut = null;
         
         // setup FFT spectrum panel
-        ISpectrumProvider provider ;
+        final int bands;
+        final ISpectrumProvider provider ;
         if ( useMike ) {
             AudioFormat format = new AudioFormat(44100.0f, 16, 1, true , false);
-            provider = new MicrophoneSpectrumProvider(format,4096,processedOut,recordedIn);
+            provider = new MicrophoneSpectrumProvider(format,8192,processedOut,recordedIn);
             ((MicrophoneSpectrumProvider) provider).start();
-        } else {
-            AudioFile file = new AudioFile( currentFile.getText() );
+            bands = 2048;
+        } 
+        else 
+        {
+            AudioFile file = AudioFile.fromClassPath( currentFile.getText() );
             System.out.println( file );
         	provider = new AudioFileSpectrumProvider( file , processedOut );
+        	bands = 4096;
         }
-		final SpectrumPanel panel = new SpectrumPanel(  provider ,  1024 ); 
         
+		final SpectrumPanel panel = new SpectrumPanel(  provider ,  bands , true );
+		
         panel.setSize( new Dimension(600,400 ) );
         panel.setPreferredSize( new Dimension(600,400 ) );
         
@@ -89,7 +96,7 @@ public class FFTest
                 {
                     try 
                     {
-                        AudioFile file = new AudioFile( fc.getSelectedFile() );
+                        AudioFile file = AudioFile.fromFile( fc.getSelectedFile() );
                         System.out.println( file );
                         currentFile.setText( fc.getSelectedFile().getAbsolutePath() );
                         
@@ -140,6 +147,10 @@ public class FFTest
         	{
         		panel.dispose();
         		super.windowClosing(e);
+        		// force shutdown because for some odd reason the AudioSystem
+        		// has some non-daemon threads still running (although this
+        		// should be fixed according to http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4735740
+        		System.exit(0); 
         	}
 		});
         

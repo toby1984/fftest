@@ -1,7 +1,11 @@
 package de.codesourcery.fft;
 
+import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.text.DecimalFormat;
 import java.util.NoSuchElementException;
 
@@ -12,7 +16,7 @@ import javax.sound.sampled.UnsupportedAudioFileException;
 
 public final class AudioFile 
 {
-    private final File file;
+    private final InputStreamProvider inputProvider;
     private final AudioFormat format;
     private final long totalFrameCount;
 
@@ -49,14 +53,14 @@ public final class AudioFile
             {
                 for ( int i = 0 ; i < sampleSizeInBytes ; i++ ) {
                     result = result << 8;
-                	result |= data[offset+i];
+                    result |= data[offset+i];
                 }
             } 
             else 
             {
                 for ( int i = 0 ; i < sampleSizeInBytes ; i++ ) {
                     result = result >> 8;
-                    result |= data[offset+i];
+                result |= data[offset+i];
                 }
             }
             offset += strideInBytes;
@@ -64,10 +68,62 @@ public final class AudioFile
         }
     }        
 
-    public AudioFile(File file) throws IOException, UnsupportedAudioFileException
+    public interface InputStreamProvider {
+
+        public InputStream createStream() throws IOException;
+    }
+
+    public static AudioFile fromClassPath(final String path) throws IOException, UnsupportedAudioFileException 
     {
-        final AudioInputStream audioInputStream =  AudioSystem.getAudioInputStream(file);
-        this.file = file;
+        final String stripped = path.startsWith("classpath:") ? path.substring( "classpath:".length() ) : path;
+
+        return new AudioFile( new InputStreamProvider() 
+        {
+
+            @Override
+            public InputStream createStream() throws IOException
+            {
+                InputStream result = getClass().getResourceAsStream( stripped );
+                if ( result == null ) {
+                    throw new FileNotFoundException("Failed to load audio from classpath:"+stripped);
+                }
+                return new BufferedInputStream(result);
+            }
+        });
+    }
+
+    public static AudioFile fromFile(final File path) throws IOException, UnsupportedAudioFileException 
+    {
+        return new AudioFile( new InputStreamProvider() {
+
+            @Override
+            public InputStream createStream() throws IOException
+            {
+                return new FileInputStream( path );
+            }
+        });
+    }    
+
+    public AudioFile(InputStreamProvider provider) throws IOException, UnsupportedAudioFileException
+    {
+        final InputStream in = provider.createStream(); 
+        AudioInputStream audioInputStream = null;
+        try {
+            audioInputStream =  AudioSystem.getAudioInputStream(in);
+        } 
+        finally 
+        {
+            if ( audioInputStream != null ) {
+                try {
+                    audioInputStream.close();
+                } catch(IOException e) {};                
+            }
+            try {
+                in.close();
+            } catch(IOException e) {};
+        }
+
+        this.inputProvider = provider;
         this.format = audioInputStream.getFormat();
         this.totalFrameCount = audioInputStream.getFrameLength();
     }
@@ -109,11 +165,6 @@ public final class AudioFile
         return (long) Math.ceil( getTotalFrameCount() / format.getFrameRate() * 1000.0f / format.getChannels() );
     }
 
-    public AudioFile(String string) throws IOException, UnsupportedAudioFileException
-    {
-        this(new File(string) );
-    }
-
     public AudioFormat getFormat()
     {
         return format;
@@ -122,7 +173,7 @@ public final class AudioFile
     @Override
     public String toString()
     {
-        String result = rightPad( "File: ")+file.getAbsolutePath();
+        String result = rightPad( "Input: ")+inputProvider;
         result += "\n"+rightPad( "Total frames: ")+getTotalFrameCount();
         result += "\n"+rightPad( "Duration/ms: ")+getDurationInMillis();
         result += "\n"+rightPad( "Encoding: ")+format.getEncoding();
@@ -161,7 +212,7 @@ public final class AudioFile
         final int bytesPerFrame =  format.getFrameSize();
         if (bytesPerFrame == AudioSystem.NOT_SPECIFIED) // some audio formats may have unspecified frame size
         {
-            throw new IllegalStateException("Input file "+file.getAbsolutePath()+" has unspecified frame size");
+            throw new IllegalStateException("Input audio "+inputProvider+" has unspecified frame size");
         } 
         return bytesPerFrame;
     }
@@ -188,30 +239,47 @@ public final class AudioFile
 
     public void readFrames(int offset,int numOfFrames, byte[] buffer) throws IOException, UnsupportedAudioFileException 
     {
-        final AudioInputStream audioInputStream =  AudioSystem.getAudioInputStream(file);
 
-        final int bytesPerFrame =  audioInputStream.getFormat().getFrameSize();
-        if (bytesPerFrame == AudioSystem.NOT_SPECIFIED) // some audio formats may have unspecified frame size
-        {
-            throw new IllegalStateException("Input file "+file.getAbsolutePath()+" has unspecified frame size");
+        final InputStream in = inputProvider.createStream();
+        AudioInputStream audioInputStream = null;
+        try {
+            audioInputStream =  AudioSystem.getAudioInputStream(in);
+
+            final int bytesPerFrame =  audioInputStream.getFormat().getFrameSize();
+            if (bytesPerFrame == AudioSystem.NOT_SPECIFIED) // some audio formats may have unspecified frame size
+            {
+                throw new IllegalStateException("Input audio has unspecified frame size");
+            } 
+
+            final byte[] audioBytes = new byte[bytesPerFrame];
+
+            // advance to desired frame
+            for ( int i = 0 ; i < offset ; i++ ) {
+                int read = audioInputStream.read(audioBytes);
+                if ( read == -1 || read != bytesPerFrame ) {
+                    throw new IOException("Internal error, failed to read frame #"+i+" from "+inputProvider);
+                }
+            }
+
+            for ( int i = 0 ; i < numOfFrames ; i++ ) 
+            {
+                final int read = audioInputStream.read(buffer,i*bytesPerFrame , bytesPerFrame );
+                if ( read == -1 || read != bytesPerFrame ) {
+                    throw new IOException("Internal error, failed to read frame #"+(i+offset)+" from "+inputProvider);
+                }
+            }
         } 
-
-        final byte[] audioBytes = new byte[bytesPerFrame];
-
-        // advance to desired frame
-        for ( int i = 0 ; i < offset ; i++ ) {
-            int read = audioInputStream.read(audioBytes);
-            if ( read == -1 || read != bytesPerFrame ) {
-                throw new IOException("Internal error, failed to read frame #"+i+" from "+file.getAbsolutePath());
-            }
-        }
-
-        for ( int i = 0 ; i < numOfFrames ; i++ ) 
+        finally 
         {
-            final int read = audioInputStream.read(buffer,i*bytesPerFrame , bytesPerFrame );
-            if ( read == -1 || read != bytesPerFrame ) {
-                throw new IOException("Internal error, failed to read frame #"+(i+offset)+" from "+file.getAbsolutePath());
+            try {
+                in.close();
+            } catch(IOException e) {}
+
+            if ( audioInputStream != null ) {
+                try {
+                    audioInputStream.close();
+                } catch(IOException e) {}        
             }
-        }
+        }        
     }        
 }

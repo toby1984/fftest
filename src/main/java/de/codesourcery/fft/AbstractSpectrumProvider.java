@@ -5,12 +5,13 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy;
+import java.util.concurrent.ThreadPoolExecutor.AbortPolicy;
 import java.util.concurrent.TimeUnit;
 
 import javax.sound.sampled.AudioFormat;
@@ -143,7 +144,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
             this.waveWriter = null;
         }
 
-        final BlockingQueue<Runnable> workQueue = new SynchronousQueue<>();
+        final BlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<>(10);
 
         final ThreadFactory threadFactory = new ThreadFactory() {
 
@@ -160,7 +161,9 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
                 t.setDaemon( true );
                 return t;
             }};
-            threadPool = new ThreadPoolExecutor(1, 1, 60, TimeUnit.SECONDS, workQueue, threadFactory, new CallerRunsPolicy() );
+            // ringbuffer implementation is based on the assumption of exactly ONE reader and writer
+            // so thread pool must not use more than one thread
+            threadPool = new ThreadPoolExecutor(1, 1, 60, TimeUnit.SECONDS, workQueue, threadFactory, new AbortPolicy() );
 
             this.audioFormat = audioFormat;
     }
@@ -211,7 +214,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
     private void runInBackground(final ICallback callback, final int fftSize, final boolean applyWindowingFunction,final boolean applyFilters)
     {
         pendingRequests.put( callback , DUMMY );
-        threadPool.submit( new Runnable() {
+        final Runnable runnable = new Runnable() {
 
             @Override
             public void run()
@@ -237,7 +240,13 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
                     }
                 }
             }
-        } );
+        };
+        
+        try {
+            threadPool.submit( runnable );
+        } catch(RejectedExecutionException e) {
+            System.out.print("r");
+        }
     }
 
     protected final void invalidateCache() 

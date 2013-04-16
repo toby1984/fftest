@@ -47,7 +47,7 @@
         <version>2.2-beta-2</version>
         <configuration>
           <appendAssemblyId>false</appendAssemblyId>
-          <finalName>jacer</finalName>
+          <finalName>fftest</finalName>
           <archive>
             <manifest>
               <mainClass>de.codesourcery.fft.FFTest</mainClass>

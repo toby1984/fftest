@@ -1,5 +1,6 @@
 package de.codesourcery.fft;
 
+import java.text.DecimalFormat;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 
@@ -83,54 +84,119 @@ public class RingBufferTest extends TestCase {
 
 	public void testReadWrite() throws Exception {
 
-		final int threadCount = Runtime.getRuntime().availableProcessors()+1;
-
 		final int bufSize = 1024;
+		final int totalWriteBufferCount = 1000;
+		final int requiredSuccessCount=10;
 		
-		final RingBuffer buffer = new RingBuffer(bufSize,50);
-
-		final ReaderThread[] readerThreads = new ReaderThread[threadCount]; 
-		for ( int i = 0 ; i < threadCount ; i++ ) 
+		int currentDelay = 5000;
+		int window = currentDelay / 2; 
+		
+		while(true) 
 		{
-			readerThreads[i] = new ReaderThread("reader-"+i,buffer);
-			readerThreads[i].start();
+		    boolean success = true;
+
+		    double mbPerSecond=0;
+		    System.out.print("Delay "+currentDelay+" - ");
+		    for (int i = 0 ; i < requiredSuccessCount ; i++ ) 
+		    {
+		        try 
+		        {
+		            double result = runTest(bufSize, totalWriteBufferCount, currentDelay);
+		            mbPerSecond = Math.max( mbPerSecond , result );
+		        } 
+		        catch(Exception | Error e) {
+		            success = false;
+		            break;
+		        }
+		    }
+		    
+		    if ( success ) 
+		    {
+		        final DecimalFormat DF = new DecimalFormat("#########0.0### MB/s");
+		        System.out.println("SUCCESS - "+DF.format(mbPerSecond));
+		    } else {
+                System.out.println("FAILURE");
+		    }
+		    
+		    if ( success ) 
+		    {
+		        if ( currentDelay - window >= 0 ) {
+		            currentDelay = currentDelay - window;
+		        } 
+		        else 
+		        {
+		            System.out.println("Top-Speed reached.");
+		            break;
+		        }
+		    } 
+		    else 
+		    {
+	            if ( window > 1 ) {
+	                window = window >> 1;
+	            }		        
+                currentDelay = currentDelay + window;
+		    }
 		}
+	}
+
+    private double runTest(final int bufSize, final int totalWriteBufferCount, final int delay) throws InterruptedException
+    {
+        final RingBuffer buffer = new RingBuffer(bufSize,50);
+
+		final ReaderThread readerThread = new ReaderThread("reader",buffer);
+		readerThread.start();
 		
 		final long[] bytesWritten = {0};
-		final BufferWriter writer = new BufferWriter() {
-			
-			private final byte[] data = new byte[ bufSize ];
-			
+		
+		final int[] expectedHash = {0};
+		final Random rnd = new Random(System.currentTimeMillis());
+		final BufferWriter writer = new BufferWriter() 
+		{
 			@Override
 			public int write(byte[] buffer, int bufferSize) 
 			{
-				System.arraycopy( data , 0 , buffer , 0 , bufferSize );
+			    rnd.nextBytes( buffer );
+			    
+                int hash = 0;
+                for ( int i = 0 ; i < bufferSize ; i++ ) {
+                    hash = 31*hash + buffer[i];
+                }
+                expectedHash[0] += hash;
+			    
 				bytesWritten[0]+=bufferSize;
 				return bufferSize;
 			}
 		};
 
-		for ( int i = 0 ; i < 1000 ; i++ ) {
+		double dummy = 0;
+		long time = -System.currentTimeMillis();
+		for ( int i = 0 ; i < totalWriteBufferCount ; i++ ) 
+		{
 			buffer.write( writer );
-			Thread.sleep(1);
+			
+			double value = 1.23d;
+			for ( int j = 0 ; j < delay ; j++ ) {
+			    value= value*5.23+value*value;
+			}
+			dummy += value;
 		}
+		time += System.currentTimeMillis();
 		
-		Thread.sleep(1000); // let readers catch up
+		final double mbWritten = (totalWriteBufferCount*bufSize) / (1024.0*1024.0);
+		final double mbPerSecond = mbWritten / ( time / 1000.0d );
 		
-		long bytesRead = 0;
-		for ( int i = 0 ; i < threadCount ; i++ ) {
-			ReaderThread t = readerThreads[i]; 
-			t.terminate();
-			assertFalse( t.isFailedUnexpectedly() );
-			System.out.println("Thread "+t.getName()+" read "+t.getBytesRead()+" bytes");
-			bytesRead += t.getBytesRead();
-		}
-		System.out.println("Bytes written: "+bytesWritten[0]);
-		System.out.println("Bytes read: "+bytesRead);
-		System.out.println("Bytes lost: "+buffer.getBytesLost());
+		System.out.print( Double.toString(dummy).replaceAll(".", "" ) );
+		
+		Thread.sleep(1000); // let reader catch up
+		
+		readerThread.terminate();
+		assertFalse( readerThread.isFailedUnexpectedly() );
+		long bytesRead = readerThread.getBytesRead();
 		assertEquals( bytesWritten[0], bytesRead );
 		assertEquals( 0 , buffer.getBytesLost() );
-	}
+		assertEquals( expectedHash[0] , readerThread.getHash() );
+		return mbPerSecond;
+    }
 
 	protected static final int hashByteArray(byte[] array) {
 		final int len = array.length;
@@ -149,11 +215,11 @@ public class RingBufferTest extends TestCase {
 		private volatile boolean terminate;
 
 		private boolean failedUnexpectedly;
-		private int hash;
 		private long bytesRead;
 		
 		private final CountDownLatch latch = new CountDownLatch(1);
 		
+		private int hash = 0;
 		public ReaderThread(String name,RingBuffer buffer)
 		{
 			super(name);
@@ -179,28 +245,35 @@ public class RingBufferTest extends TestCase {
 				latch.countDown();
 			}
 		}
+		
+		public int getHash()
+        {
+            return hash;
+        }
 
 		private void internalRun() throws InterruptedException 
 		{
 			final int bufferSize = buffer.getBufferSize();
 			final byte[] readBuffer = new byte[ bufferSize ];
+			
 			while ( ! terminate ) 
 			{
 				int bytesRead = buffer.read( readBuffer );
+				
 				if ( bytesRead != bufferSize ) {
 					throw new RuntimeException("Read only "+bytesRead+" bytes?");
 				}
-				this.bytesRead += bytesRead;
-				hash = 23*hash+hashByteArray(readBuffer);
+				int hash = 0;
+				for ( int i = 0 ; i < bytesRead ; i++ ) {
+				    hash = 31*hash + readBuffer[i];
+				}
+				this.hash = this.hash + hash;
+				this.bytesRead+=bytesRead;
 			}
 		}
 		
 		public long getBytesRead() {
 			return bytesRead;
-		}
-		
-		public int getHash() {
-			return hash;
 		}
 		
 		public boolean isFailedUnexpectedly() {
