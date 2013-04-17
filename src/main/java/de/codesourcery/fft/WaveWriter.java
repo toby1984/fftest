@@ -88,7 +88,7 @@ public class WaveWriter {
 		wavOut.write( toUnsignedShort( format.getSampleSizeInBits() ) ); // [ ] 2 bytes
 		
 		// write data 
-		wavOut.write( toASCII("powerSpectrum" ) ); // [ ] 4 bytes
+		wavOut.write( toASCII("data" ) ); // [ ] 4 bytes
 		wavOut.write( toUnsignedLong( bytesWritten ) ); // [ ] 4 bytes
 		
 		byte[] buffer = new byte[1024];
@@ -112,10 +112,11 @@ public class WaveWriter {
 		
 		byte[] result = new byte[4];
 		// LSB first !!
-		result[3] = (byte) ((value >> 24) & 0xff);
-		result[2] = (byte) ((value >> 16) & 0xff);
-		result[1] = (byte) ((value >> 8) & 0xff);
 		result[0] = (byte) ( value & 0xff);
+		result[1] = (byte) ((value >> 8) & 0xff);
+		result[2] = (byte) ((value >> 16) & 0xff);
+		result[3] = (byte) ((value >> 24) & 0xff);
+
 		return result;
 	}
 	
@@ -123,8 +124,8 @@ public class WaveWriter {
 		
 		byte[] result = new byte[2];
 		// LSB first !!
-		result[1] = (byte) ((value >> 8) & 0xff);
 		result[0] = (byte) ( value & 0xff);
+		result[1] = (byte) ((value >> 8) & 0xff);
 		return result;
 	}	
 	
