@@ -35,7 +35,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 
 	private final ExecutorService threadPool;
 
-	private final Filter lowPassFilter = NOP_FILTER; // new LowPassFilter(5000);
+	private final Filter lowPassFilter = new LowPassFilter(5000);
 	private final Filter highPassFilter = new HighPassFilter(15000);
 
 	private final AudioFormat audioFormat;
@@ -61,7 +61,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 		private final double RClow;
 
 		public LowPassFilter(double cutOffFreq) {
-			this.RClow = 10;// 1.0d/(2.0*Math.PI*cutOffFreq);
+			this.RClow = 0.5;// 1.0d/(2.0*Math.PI*cutOffFreq);
 		}
 
 		@Override

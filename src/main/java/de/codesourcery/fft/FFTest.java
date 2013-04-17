@@ -78,6 +78,7 @@ public class FFTest
         combined.add( currentFile ,cnstrs );
         
         final JButton button = new JButton("Choose...");
+        button.setFocusable( false );
         button.addActionListener( new ActionListener() {
             
             @Override
