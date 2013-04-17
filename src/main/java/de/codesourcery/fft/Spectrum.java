@@ -8,14 +8,17 @@ import java.util.List;
 
 public final class Spectrum
 {
-    private final double[] data;
+    private final double[] powerSpectrum;
     private final int fftSize;
     private final boolean windowFunctionApplied;
     private final double sampleRate;
     
     private final int bands;
-    private final double minValue;
-    private final double maxValue;
+    
+    private final double volumeInPercent;
+    
+    private final double minPower;
+    private final double maxPower;
     
     private final double[] autoCorrelation;
     
@@ -23,9 +26,17 @@ public final class Spectrum
     
     private final List<FrequencyAndSlot> topAutoCorrelated;
     
-    public Spectrum(double[] data, double[] autoCorrelation,int fftSize,double sampleRate,boolean windowFunctionApplied,double minValue,double maxValue,boolean filtersApplied)
+    public Spectrum(double[] powerSpectrum, 
+    		double[] autoCorrelation,
+    		int fftSize,
+    		double sampleRate,
+    		boolean windowFunctionApplied,
+    		double minValue,
+    		double maxValue,
+    		boolean filtersApplied,
+    		double volumeInPercent)
     {
-        this.data = data;
+        this.powerSpectrum = powerSpectrum;
         if ( ( fftSize >> 1 ) << 1 != fftSize ) {
             throw new IllegalArgumentException("FFT size needs to be 2^x");
         }
@@ -35,10 +46,15 @@ public final class Spectrum
         this.autoCorrelation = autoCorrelation;
         this.windowFunctionApplied=windowFunctionApplied;
         this.bands = fftSize/2;
-        this.minValue = minValue;
-        this.maxValue = maxValue;
+        this.minPower = minValue;
+        this.maxPower = maxValue;
+        this.volumeInPercent = volumeInPercent;
         this.topAutoCorrelated = calcTopAutoCorrelationFrequencies(1);
     }
+    
+    public double getVolumeInPercent() {
+		return volumeInPercent;
+	}
     
     public boolean isFiltersApplied() {
 		return filtersApplied;
@@ -52,8 +68,8 @@ public final class Spectrum
 	public String toString() {
 		return "Spectrum [fftSize="
 				+ fftSize + ", windowFunctionApplied=" + windowFunctionApplied
-				+ ", bands=" + bands + ", minValue=" + minValue + ", maxValue="
-				+ maxValue + "data=" + Arrays.toString(data) + ", ]";
+				+ ", bands=" + bands + ", minValue=" + minPower + ", maxValue="
+				+ maxPower + "data=" + Arrays.toString(powerSpectrum) + ", ]";
 	}
     
     public double[] getAutoCorrelation()
@@ -63,12 +79,12 @@ public final class Spectrum
 
 	public double getMinValue()
     {
-        return minValue;
+        return minPower;
     }
     
     public double getMaxValue()
     {
-        return maxValue;
+        return maxPower;
     }
     
     public int getBands()
@@ -92,7 +108,7 @@ public final class Spectrum
     
     public double[] getData()
     {
-        return data;
+        return powerSpectrum;
     }
     
 	public final class FrequencyAndSlot implements Comparable<FrequencyAndSlot> 

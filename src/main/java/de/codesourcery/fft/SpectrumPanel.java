@@ -1,5 +1,6 @@
 package de.codesourcery.fft;
 
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Graphics;
@@ -46,6 +47,8 @@ public final class SpectrumPanel extends JPanel {
 	private volatile ISpectrumProvider spectrumProvider;	
 
 	private final RefreshThread refreshThread = new RefreshThread();
+	
+	private final VolumeMeter volumeMeter = new VolumeMeter( 100 );
 
 	protected final class RefreshThread extends Thread 
 	{
@@ -128,7 +131,9 @@ public final class SpectrumPanel extends JPanel {
 		public void calculationFinished(ISpectrumProvider provider, Spectrum spectrum)
 		{
 			SpectrumPanel.this.spectrum = spectrum;
-
+			
+			volumeMeter.setVolume( spectrum.getVolumeInPercent() );
+			
 			SwingUtilities.invokeLater( new Runnable()  {
 
 				@Override
@@ -141,7 +146,7 @@ public final class SpectrumPanel extends JPanel {
 		@Override
 		public void calculationFailed(ISpectrumProvider provider) { }
 	};    
-
+	
 	private final KeyAdapter keyListener = new KeyAdapter() 
 	{
 		public void keyTyped(java.awt.event.KeyEvent e) 
@@ -228,6 +233,8 @@ public final class SpectrumPanel extends JPanel {
 		this.applyFilters = applyFilters;
 		addMouseMotionListener( mouseListener );
 		setSpectrumProvider(provider);
+		setLayout( new BorderLayout() );
+		add( volumeMeter , BorderLayout.WEST );
 	}
 
 	public void setSpectrumProvider(ISpectrumProvider provider)

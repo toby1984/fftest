@@ -67,8 +67,6 @@ public final class RingBuffer {
 		
 	    final int writePtr = this.writePtr.get();
 	    
-		final int ptr = writePtr % bufferCount;
-		
 		if ( writePtr - readPtr.get() >= bufferCount ) 
 		{
 			bytesLost += bufferSize;
@@ -76,7 +74,8 @@ public final class RingBuffer {
 				System.out.println("Total bytes lost "+bytesLost+" : write-ptr: "+writePtr+" / read-ptr: "+readPtr);
 			}
 		}
-		
+
+		final int ptr = writePtr % bufferCount;
 		final byte[] tmp = data[ptr];
 		data[ptr] = writeBuffer;
 		writeBuffer = tmp;			

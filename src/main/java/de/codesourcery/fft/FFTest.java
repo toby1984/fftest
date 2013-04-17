@@ -11,7 +11,6 @@ import java.io.File;
 import java.io.IOException;
 
 import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
@@ -32,7 +31,7 @@ public class FFTest
     
     public static void main(String[] args) throws Exception
     {
-    	final boolean useMike = args.length > 0;
+    	final boolean useMike = true;
     	
         final JFrame frame = new JFrame("FFT");
         

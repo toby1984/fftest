@@ -37,14 +37,14 @@ public class MicrophoneSpectrumProvider extends AbstractSpectrumProvider {
 	}
 
 	@Override
-	protected double[] getData() 
+	protected SampleData getData() 
 	{
 		final int sampleBytes = getAudioFormat().getSampleSizeInBits()/8;
 		
 		final int bufferSize = provider.getBufferSizeInBytes() / sampleBytes;
 		
-		double min = Long.MAX_VALUE;
-		double max = Long.MIN_VALUE;
+		double min = 0;
+		double max = 0;
 		
 		double[] buffer = new double[ bufferSize ];
 		try 
@@ -66,8 +66,12 @@ public class MicrophoneSpectrumProvider extends AbstractSpectrumProvider {
 					}
 					bytePtr += sampleBytes;
 					buffer[wordPtr]=value;
-					min = Math.min( min , buffer[wordPtr]);
-					max = Math.max( max , buffer[wordPtr]);
+					if ( value < min ) {
+						min = value;
+					}
+					if ( value > max ) {
+						max = value;
+					}
 				}
 			}
 			else 
@@ -83,8 +87,12 @@ public class MicrophoneSpectrumProvider extends AbstractSpectrumProvider {
 					}
 					bytePtr += sampleBytes;
 					buffer[wordPtr]=value;
-					min = Math.min( min , buffer[wordPtr]);
-					max = Math.max( max , buffer[wordPtr]);					
+					if ( value < min ) {
+						min = value;
+					}
+					if ( value > max ) {
+						max = value;
+					}					
 				}
 			}
 		} 
@@ -93,7 +101,7 @@ public class MicrophoneSpectrumProvider extends AbstractSpectrumProvider {
 		}
 		
 //		System.out.println("Bytes/sample: "+sampleBytes+" , buffer size: "+ provider.getBufferSizeInBytes()+" bytes , output buffer: "+bufferSize+" / offset: "+offset+" / min: "+min+" / max: "+max);
-		return buffer;
+		return new SampleData(buffer ,min , max );
 	}
 
 	@Override

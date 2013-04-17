@@ -99,7 +99,7 @@ public final class AudioFile
             @Override
             public InputStream createStream() throws IOException
             {
-                return new FileInputStream( path );
+                return new BufferedInputStream( new FileInputStream( path ) );
             }
         });
     }    

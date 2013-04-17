@@ -87,7 +87,7 @@ public class WaveWriter {
 		wavOut.write( toUnsignedShort( format.getSampleSizeInBits() ) ); // [ ] 2 bytes
 		
 		// write data 
-		wavOut.write( toASCII("data" ) ); // [ ] 4 bytes
+		wavOut.write( toASCII("powerSpectrum" ) ); // [ ] 4 bytes
 		wavOut.write( toUnsignedLong( bytesWritten ) ); // [ ] 4 bytes
 		
 		byte[] buffer = new byte[1024];

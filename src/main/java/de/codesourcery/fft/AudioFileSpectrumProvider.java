@@ -26,7 +26,7 @@ public class AudioFileSpectrumProvider extends AbstractSpectrumProvider
         invalidateCache();
     }
     
-    protected final double[] getData() 
+    protected final SampleData getData() 
     {
         // read whole file in one go
         final byte[] data;
@@ -51,10 +51,20 @@ public class AudioFileSpectrumProvider extends AbstractSpectrumProvider
             }
         }
 
-        for ( int j = 0 ; j < totalSampleCount ; j++ ) {
-            jointStereo[j] /= channels;
-        }
-        return jointStereo;
+        double minSample = 0;
+        double maxSample = 0;
+        for ( int j = 0 ; j < totalSampleCount ; j++ ) 
+        {
+        	double val = jointStereo[j] / channels;
+        	jointStereo[j]=val;
+            if ( val < minSample ) {
+            	minSample = val;
+            }
+            if ( val > maxSample ) {
+            	maxSample = val;
+            }
+        } 
+        return new SampleData(jointStereo,minSample , maxSample );
     }
 
 	@Override
