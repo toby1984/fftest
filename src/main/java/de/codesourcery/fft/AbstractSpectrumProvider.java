@@ -376,7 +376,8 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 
 		long calcAverageTime = System.currentTimeMillis();
 
-		try {
+		try 
+		{
 			return new Spectrum( spectrum , getAutoCorrelation( spectrum , fftSize ) , 
 					fftSize , getAudioFormat().getSampleRate() , applyWindowingFunction , min , max , applyFilters,
 					calcVolume( sampleData.minSample, sampleData.maxSample ) );
@@ -387,9 +388,11 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 		} 
 		finally 
 		{
+		    long totalTime = System.currentTimeMillis();
 		    performanceCounter++;
-			if ( (performanceCounter % 10) == 0 ) {
-
+			if ( (performanceCounter % 10) == 0 ) 
+			{
+			    totalTime -= startTime;
 				calcAverageTime -= fftTime;
 				fftTime -= windowFuncTime;
 				windowFuncTime -= wavWriteTime;
@@ -397,10 +400,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 				filterTime -= dataAquisitionTime;
 				dataAquisitionTime -= startTime;
 
-				final long total = calcAverageTime + fftTime + windowFuncTime + wavWriteTime + filterTime + dataAquisitionTime;
-
-
-				System.out.println("Total: "+total+
+				System.out.println("Total: "+totalTime+
 						" / FFT: "+fftTime+
 						" / filters: "+filterTime+
 						" / window_func: "+windowFuncTime+

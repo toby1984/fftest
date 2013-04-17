@@ -1,6 +1,6 @@
 package de.codesourcery.fft;
 
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 
 public final class RingBuffer {
@@ -9,29 +9,33 @@ public final class RingBuffer {
 	private final int bufferCount;
 
 	private byte[] writeBuffer;
-    private byte[] readBuffer;	
-
-	private volatile byte[][] data;
+    private final byte[][] refData;
+    
+    private final AtomicReferenceArray<byte[]> data;
 	   
-	private final AtomicInteger readPtr = new AtomicInteger(0);
-	private final AtomicInteger writePtr = new AtomicInteger(0);
+	private int readPtr = 0;
+	private int writePtr = 0;
 
-	private volatile long bytesLost = 0 ;
+	private volatile long lostBytesCount = 0 ;
 
-	public interface BufferWriter {
+	public interface BufferWriter 
+	{
 		public int write(byte[] buffer,int bufferSize);
 	}
 
 	public RingBuffer(int bufferSize,int bufferCount) 
 	{
-		this.data = new byte[ bufferCount ][];
+	    this.writeBuffer = new byte[bufferSize];
+        this.bufferCount = bufferCount;
+        this.bufferSize = bufferSize;
+        
+	    this.data = new AtomicReferenceArray<byte[]>(bufferCount);
+	    
+		this.refData = new byte[bufferCount][];
+		
 		for ( int i = 0 ;i < bufferCount ; i++  ) {
-			data[i] = new byte[ bufferSize ];
+			refData[i] = new byte[ bufferSize ];
 		}
-		this.writeBuffer = new byte[bufferSize];
-        this.readBuffer = new byte[bufferSize];		
-		this.bufferCount = bufferCount;
-		this.bufferSize = bufferSize;
 	}
 
 	public int getBufferSize() {
@@ -42,74 +46,65 @@ public final class RingBuffer {
 		return bufferCount;
 	}
 
-	public long getBytesLost() {
-		return bytesLost;
+	public long getLostBytesCount() {
+		return lostBytesCount;
 	}
 
 	public void write(BufferWriter writer) 
 	{
-	    /*
-	     * We require the writer to always write
-	     * zero or 'bufferSize' bytes, anything else 
-	     * will be discarded-
-	     */
-	    final int written = writer.write( writeBuffer , bufferSize );
-	    
-	    if ( written == 0 ) {
+        final byte[] tmpBuffer=this.writeBuffer;
+        
+        /*
+         * We require the writer to always write
+         * zero or 'bufferSize' bytes, anything else 
+         * will be discarded-
+         */
+        final int written = writer.write( tmpBuffer , bufferSize );        
+	    if ( written == 0 ) 
+	    {
 		    return;
 		} 
 	    else if ( written < bufferSize ) 
 	    {
 	        System.err.println("Lost "+written+" bytes because writer returned less than the buffer size");
-	        bytesLost += written;
+	        lostBytesCount += written;
 	        return;
 		}
-		
-	    final int writePtr = this.writePtr.get();
 	    
-		if ( writePtr - readPtr.get() >= bufferCount ) 
-		{
-			bytesLost += bufferSize;
-			if ( ( writePtr % 50 ) == 0 ) {
-				System.out.println("Total bytes lost "+bytesLost+" : write-ptr: "+writePtr+" / read-ptr: "+readPtr);
-			}
-		}
+        final int writePtr = this.writePtr;
+        final int ptr = writePtr % bufferCount;	    
 
-		final int ptr = writePtr % bufferCount;
-		final byte[] tmp = data[ptr];
-		data[ptr] = writeBuffer;
-		writeBuffer = tmp;			
-		
-		//  DO NOT REMOVE THE NEXT LINE , see http://stackoverflow.com/questions/8827820/necessity-of-volatile-array-write-while-in-synchronized-block
-		this.data = this.data; // perform volatile write to make sure changes to the array are being published to the reader thread
-		
-		this.writePtr.incrementAndGet();
+	    this.writeBuffer = refData[ptr];
+	    refData[ptr] = tmpBuffer;
+	    
+		final byte[] oldBuffer = data.getAndSet( ptr , tmpBuffer );
+		if ( oldBuffer != null ) 
+		{
+	          lostBytesCount += bufferSize;
+	          if ( ( writePtr % 50 ) == 0 ) {
+	             System.out.println("Total bytes lost "+lostBytesCount+" : write-ptr: "+writePtr+" / read-ptr: "+readPtr);
+	          }
+		}
+		this.writePtr++;
 	}
 
 	public int read(byte[] target) throws InterruptedException 
 	{
-	    int readPtr = this.readPtr.get();
-	    
-	    while( readPtr == writePtr.get() ) 
+        final int ptr = this.readPtr % bufferCount;
+	       
+        byte[] currentBuffer;
+	    while ( ( currentBuffer = data.get( ptr ) ) == null ) 
 	    {
-	        if ( Thread.interrupted() ) {
+	        if ( Thread.interrupted() ) 
+	        {
 	            throw new InterruptedException("Interrupted");
 	        }
 	    }
+        
+	    System.arraycopy( currentBuffer , 0 , target , 0 , bufferSize );
 	    
-		final int ptr = readPtr % bufferCount;
-		
-		final byte[] tmp = data[ptr];
-		data[ptr] = readBuffer;
-		readBuffer = tmp;
-		
-        //  DO NOT REMOVE THE NEXT LINE , see http://stackoverflow.com/questions/8827820/necessity-of-volatile-array-write-while-in-synchronized-block
-        this.data = this.data; // perform volatile write to make sure changes to the array are being published to the reader thread		
-		
-        this.readPtr.incrementAndGet();
-        
-        System.arraycopy( tmp , 0 , target , 0 , bufferSize );		
-        
+        data.compareAndSet( ptr , currentBuffer , null );
+        this.readPtr++;        
 		return bufferSize;
 	}
 }

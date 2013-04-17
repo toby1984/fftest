@@ -35,7 +35,7 @@ public class RingBufferTest extends TestCase {
 			});
 		}
 
-		assertEquals( 0 , buffer.getBytesLost() );
+		assertEquals( 0 , buffer.getLostBytesCount() );
 		
 		int actualHash = 0 ;
 		final byte[] tmp = new byte[ 10 ];
@@ -48,7 +48,12 @@ public class RingBufferTest extends TestCase {
 			actualHash = 31*actualHash + calcHash( tmp );
 		}
 		
-		assertEquals( expectedHash , actualHash );
+		try {
+		    assertEquals( "Hash value mismatch" , expectedHash , actualHash );
+		} catch(Error e) {
+		    e.printStackTrace();
+		    throw e;
+		}
 	}
 
 	public void testWriteOverflowOneBuffer() 
@@ -64,7 +69,7 @@ public class RingBufferTest extends TestCase {
 			});
 		}
 
-		assertEquals( 10 , buffer.getBytesLost() );
+		assertEquals( 10 , buffer.getLostBytesCount() );
 	}	
 
 	public void testWriteOverflowTwoBuffers() 
@@ -80,12 +85,12 @@ public class RingBufferTest extends TestCase {
 			});
 		}
 
-		assertEquals( 20 , buffer.getBytesLost() );
+		assertEquals( 20 , buffer.getLostBytesCount() );
 	}	
 
 	public void testReadWrite() throws Exception {
 
-		final int bufSize = 1024*10;
+		final int bufSize = 8000;
 		final int totalWriteBufferCount = 255;
 		final int requiredSuccessCount=5;
 		
@@ -101,6 +106,8 @@ public class RingBufferTest extends TestCase {
 		    boolean success = true;
 
 		    double buffersPerSecond=0;
+		    System.out.flush();
+		    System.out.println("-------------------------------");
 		    System.out.print("Delay "+currentDelay+" - ");
 		    for (int i = 0 ; i < requiredSuccessCount ; i++ ) 
 		    {
@@ -159,14 +166,9 @@ public class RingBufferTest extends TestCase {
 	        final int start = buffer*bufSize;
 	        final int end = start + bufSize;
 	        
-            int intValue = (byte) buffer;
-            if ( intValue < 0 ) {
-                intValue = 128+(intValue+128);
-            }
-            
 	        for ( int offset = start ; offset < end ; offset++ ) 
 	        {
-	            result[offset]= (byte) buffer;
+	            result[offset]= (byte) ( buffer % 127);
 	        }
 	    }
 	    return result;
@@ -209,7 +211,7 @@ public class RingBufferTest extends TestCase {
 		};
 
 		double dummy = 0;
-		long time = -System.currentTimeMillis();
+		long time = System.nanoTime();
 		for ( int i = 0 ; i < totalWriteBufferCount ; i++ ) 
 		{
 			buffer.write( writer );
@@ -220,10 +222,10 @@ public class RingBufferTest extends TestCase {
 			}
 			dummy += value;
 		}
-		time += System.currentTimeMillis();
+		time = Math.abs( time - System.nanoTime() );
 		
-		final double buffersPerSecond = totalWriteBufferCount / ( time / 1000.0d );
-		System.out.println( "Duration: "+time);
+		final double timeInSeconds = time / 1000000000.0d;
+		final double buffersPerSecond = totalWriteBufferCount / timeInSeconds;
 		System.out.print( Double.toString(dummy).replaceAll(".", "" ) );
 		
 		Thread.sleep(1000); // let reader catch up
@@ -232,7 +234,7 @@ public class RingBufferTest extends TestCase {
 		assertFalse( readerThread.isFailedUnexpectedly() );
 		long bytesRead = readerThread.getBytesRead();
 		assertEquals( "Byte read count mismatch", bytesWritten[0], bytesRead );
-		assertEquals( "Bytes were lost" , 0 , buffer.getBytesLost() );
+		assertEquals( "Bytes were lost" , 0 , buffer.getLostBytesCount() );
 		assertEquals( "Hash mismatch" , expectedHash , readerThread.getHash() );
 		return buffersPerSecond;
     }
@@ -257,7 +259,7 @@ public class RingBufferTest extends TestCase {
 		private boolean failedUnexpectedly;
 		private long bytesRead;
 		
-		private Integer previousValue;
+		private Byte previousValue;
 		
 		private final CountDownLatch latch = new CountDownLatch(1);
 		
@@ -310,18 +312,23 @@ public class RingBufferTest extends TestCase {
 				
 				this.bytesRead+=bytesRead;
 				
-	            int intValue = readBuffer[0];
-	            if ( intValue < 0 ) {
-	                intValue = 128+(intValue+128);
-	            }				
-	            
+				final byte currentValue = readBuffer[0];
 				if ( previousValue != null ) 
 				{
-				    if ( intValue <= previousValue ) {
-				        System.out.println("Buffer out-of-order, current: "+intValue+" , previous: "+previousValue);
+				    if ( currentValue != ((previousValue+1) % 127) ) 
+				    {
+				        System.out.flush();
+				        final int lostBufferCount;
+				        if ( currentValue > previousValue ) {
+				            lostBufferCount = currentValue - previousValue;
+				        } else {
+				            lostBufferCount = previousValue - currentValue;
+				        }
+				        System.out.println("Buffer out-of-order, current: "+currentValue+" , previous: "+previousValue+" (lost buffers: "+lostBufferCount+")");
+				        System.out.flush();
 				    }
 				} 
-			    previousValue = intValue;
+			    previousValue = currentValue;
 			}
 		}
 		

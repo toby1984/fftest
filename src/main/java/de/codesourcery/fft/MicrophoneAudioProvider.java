@@ -91,7 +91,7 @@ public class MicrophoneAudioProvider
 
 		public long getLostBytesCount() 
 		{
-			return ringBuffer.getBytesLost();
+			return ringBuffer.getLostBytesCount();
 		}		
 
 		public int getBufferSizeInBytes() {
