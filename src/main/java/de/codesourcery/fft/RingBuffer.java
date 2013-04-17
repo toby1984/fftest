@@ -90,7 +90,8 @@ public final class RingBuffer {
 	{
 	    int readPtr = this.readPtr.get();
 	    
-	    while( readPtr == writePtr.get() ) {
+	    while( readPtr == writePtr.get() ) 
+	    {
 	        if ( Thread.interrupted() ) {
 	            throw new InterruptedException("Interrupted");
 	        }
@@ -98,13 +99,16 @@ public final class RingBuffer {
 	    
 		final int ptr = readPtr % bufferCount;
 		
-		final byte[] tmp = readBuffer;
-		readBuffer = data[ptr];
-		data[ptr] = tmp;
+		final byte[] tmp = data[ptr];
+		data[ptr] = readBuffer;
+		readBuffer = tmp;
+		
+        //  DO NOT REMOVE THE NEXT LINE , see http://stackoverflow.com/questions/8827820/necessity-of-volatile-array-write-while-in-synchronized-block
+        this.data = this.data; // perform volatile write to make sure changes to the array are being published to the reader thread		
 		
         this.readPtr.incrementAndGet();
         
-        System.arraycopy( readBuffer , 0 , target , 0 , bufferSize );		
+        System.arraycopy( tmp , 0 , target , 0 , bufferSize );		
         
 		return bufferSize;
 	}
