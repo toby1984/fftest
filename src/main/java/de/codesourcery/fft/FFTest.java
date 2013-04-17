@@ -35,10 +35,9 @@ public class FFTest
     	
         final JFrame frame = new JFrame("FFT");
         
-//        final File recordedIn = new File("/home/tgierke/tmp/recorded.wav");
-//        final File processedOut = new File("/home/tgierke/tmp/processed.wav");
-        
-        final File recordedIn = null;
+        final File recordedIn = new File("/home/tobi/tmp/recorded.wav");
+//      final File recordedIn = null;
+//      final File processedOut = new File("/home/tgierke/tmp/processed.wav");
         final File processedOut = null;
         
         // setup FFT spectrum panel
@@ -150,6 +149,10 @@ public class FFTest
         		// force shutdown because for some odd reason the AudioSystem
         		// has some non-daemon threads still running (although this
         		// should be fixed according to http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4735740
+        		try {
+					Thread.sleep( 2000 );
+				} catch (InterruptedException e1) {
+				}
         		System.exit(0); 
         	}
 		});

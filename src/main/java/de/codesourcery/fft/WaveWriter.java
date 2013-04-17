@@ -63,6 +63,7 @@ public class WaveWriter {
 	
 	public void close() throws IOException 
 	{
+		out.flush();
 		out.close();
 
 		final FileOutputStream wavOut = new FileOutputStream( outputFile );
@@ -101,6 +102,7 @@ public class WaveWriter {
     		}
 		} 
 		finally {
+			wavOut.flush();
             wavOut.close();		    
 		}
 		System.out.println("*** wrote WAVE file to: "+outputFile.getAbsolutePath());

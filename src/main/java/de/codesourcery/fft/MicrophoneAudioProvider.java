@@ -164,7 +164,6 @@ public class MicrophoneAudioProvider
 							continue;
 						}
 					}
-
 					ringBuffer.write( writer );
 				}
 			} 
@@ -175,6 +174,7 @@ public class MicrophoneAudioProvider
 				if ( waveFile != null && waveWriter != null ) {
 					try {
 						waveWriter.close();
+						logDebug("WAV file closed");
 					} catch(IOException e) {
 						e.printStackTrace();
 					}

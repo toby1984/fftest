@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor.AbortPolicy;
@@ -200,24 +199,9 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 			callback.calculationFinished( this , tmp );
 		}
 	}
-
-	public void close() 
-	{
-		System.out.println("Terminating worker pool");
-		threadPool.shutdownNow();
-
-		if ( waveWriter != null ) {
-			try {
-				waveWriter.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}   		
-	}
-
+	
 	private void runInBackground(final ICallback callback, final int fftSize, final boolean applyWindowingFunction,final boolean applyFilters)
 	{
-		pendingRequests.put( callback , DUMMY );
 		final Runnable runnable = new Runnable() {
 
 			@Override
@@ -246,10 +230,29 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 			}
 		};
 
-		try {
+		try 
+		{
+			// calling method has already aquired LOCK 
+			pendingRequests.put( callback , DUMMY );
 			threadPool.submit( runnable );
-		} catch(RejectedExecutionException e) {
+		} 
+		catch(Exception e) {
+			pendingRequests.remove( callback );
 		}
+	}	
+
+	public void close() 
+	{
+		System.out.println("Terminating worker pool");
+		threadPool.shutdownNow();
+
+		if ( waveWriter != null ) {
+			try {
+				waveWriter.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}   		
 	}
 
 	protected final void invalidateCache() 
@@ -289,8 +292,6 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 		double[] jointStereo = sampleData.data;
 
 		long dataAquisitionTime = System.currentTimeMillis();
-
-		//      System.out.println("Data aquisition: "+time+" ms");    
 
 		// apply filters
 		if ( applyFilters ) { 
@@ -376,15 +377,12 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 
 		long calcAverageTime = System.currentTimeMillis();
 
+		final Spectrum result = new Spectrum( spectrum , getAutoCorrelation( spectrum , fftSize ) , 
+				fftSize , getAudioFormat().getSampleRate() , applyWindowingFunction , min , max , applyFilters,
+				calcVolume( sampleData.minSample, sampleData.maxSample ) );		
 		try 
 		{
-			return new Spectrum( spectrum , getAutoCorrelation( spectrum , fftSize ) , 
-					fftSize , getAudioFormat().getSampleRate() , applyWindowingFunction , min , max , applyFilters,
-					calcVolume( sampleData.minSample, sampleData.maxSample ) );
-		} 
-		catch(RuntimeException e) {
-			e.printStackTrace();
-			throw e;
+			return result;
 		} 
 		finally 
 		{

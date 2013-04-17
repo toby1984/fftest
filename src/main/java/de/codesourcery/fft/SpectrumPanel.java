@@ -302,9 +302,11 @@ public final class SpectrumPanel extends JPanel {
 		return spectrum;
 	}
 
+	private long renderCount = 0;
 	@Override
 	public void paintComponent(Graphics g)
 	{
+		long time = -System.currentTimeMillis();
 		super.paintComponent(g);
 
 		currentMarkerX =  -1;
@@ -318,6 +320,10 @@ public final class SpectrumPanel extends JPanel {
 				plotAutoCorrelation( g , s );
 			}
 			plotMarkerFrequency(g);
+			time += System.currentTimeMillis();
+			if ( ( renderCount++ % 50 ) == 0 ) {
+				System.out.println("Rendering time: "+time);
+			}
 		} else {
 			System.out.println("No spectrum to paint");
 		}
