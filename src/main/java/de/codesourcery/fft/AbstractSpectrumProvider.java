@@ -16,6 +16,10 @@ import java.util.concurrent.TimeUnit;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioFormat.Encoding;
 
+import de.codesourcery.fft.filter.BiQuadFilter;
+import de.codesourcery.fft.filter.Filter;
+import de.codesourcery.fft.filter.BiQuadFilter.BiQuadType;
+import de.codesourcery.fft.filter.Filter.NOPFilter;
 import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
 
 public abstract class AbstractSpectrumProvider implements ISpectrumProvider
@@ -34,95 +38,13 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 
 	private final ExecutorService threadPool;
 
-	private final Filter lowPassFilter = new LowPassFilter(5000);
-	private final Filter highPassFilter = new HighPassFilter(15000);
+	private final Filter lowPassFilter;
+	private final Filter highPassFilter;
 
 	private final AudioFormat audioFormat;
 	private final boolean signedSamples;
 
 	private final WaveWriter waveWriter;    
-
-	public static abstract class Filter 
-	{
-		public abstract double[] filter(double[] data,double windowDurationInSeconds);
-	}
-
-	public static final class NOPFilter extends Filter {
-
-		@Override
-		public double[] filter(double[] data, double windowDurationInSeconds) {
-			return data;
-		}
-	}    
-
-	public final class LowPassFilter extends Filter {
-
-		private final double RClow;
-
-		public LowPassFilter(double cutOffFreq) {
-			this.RClow = 0.5;// 1.0d/(2.0*Math.PI*cutOffFreq);
-		}
-
-		@Override
-		public double[] filter(double[] data, double durationInSeconds) 
-		{
-			final int len = data.length;
-			/*
-             function lowpass(real[0..n] x, real dt, real RC)
-               var real[0..n] y
-               var real α := dt / (RC + dt)
-               y[0] := x[0]
-               for i from 1 to n
-                   y[i] := y[i-1] + α * (x[i] - y[i-1])   
-               return y      
-			 */
-			double[] result2 = new double[len];
-			result2[0] = data[0];       
-			double alphaLow = durationInSeconds / (RClow+durationInSeconds); 
-			for ( int i = 1 ; i < len ; i++) {
-				result2[i]= result2[i-1] + alphaLow*( data[i] - result2[i-1]);
-			}
-			return result2;
-		}
-	}
-
-	protected final class HighPassFilter extends Filter {
-
-		private final double RChigh;
-
-		public HighPassFilter(double cutOffFreq) {
-			this.RChigh = 50; // 1.0d/(2.0*Math.PI*cutOffFreq);
-		}
-
-		@Override
-		public double[] filter(double[] data, double durationInSeconds) 
-		{
-			durationInSeconds *= 0.1;
-			final int len = data.length;
-			/*
-     // Return RC high-pass filter output samples, given input samples,
-     // time interval dt, and time constant RC
-     function highpass(real[0..n] x, real dt, real RC)
-       var real[0..n] y
-       var real α := RC / (RC + dt)
-       y[0] := x[0]
-       for i from 1 to n
-          y[i] := α * (y[i-1] + x[i] - x[i-1])
-       return y      
-			 */
-
-			/* - a large α corresponds to a large RC and therefore a low corner frequency of the filter
-			 * - a small α corresponds to a small RC and therefore a high corner frequency of the filter.
-			 */
-			double alphaHigh = RChigh / (RChigh+durationInSeconds); 
-			double[] result = new double[len];
-			result[0] = data[0];
-			for ( int i = 1 ; i < len ; i++) {
-				result[i]= alphaHigh*(result[i-1]+data[i] - data[i-1] );
-			}
-			return result;
-		}
-	}    
 
 	public AbstractSpectrumProvider(AudioFormat audioFormat,File waveFile) throws FileNotFoundException 
 	{
@@ -144,7 +66,10 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 		} else {
 			this.waveWriter = null;
 		}
-
+		
+		this.highPassFilter = BiQuadFilter.create( BiQuadType.HIGHPASS , 50 , audioFormat.getSampleRate() , 1 , 6 ); 
+        this.lowPassFilter = BiQuadFilter.create( BiQuadType.LOWPASS , 18000 , audioFormat.getSampleRate() , 1 , 6 ); 
+        
 		this.signedSamples = audioFormat.getEncoding() == Encoding.PCM_SIGNED || audioFormat.getEncoding() == Encoding.PCM_FLOAT;        
 
 		final BlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<>(10);

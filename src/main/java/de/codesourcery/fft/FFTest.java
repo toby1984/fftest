@@ -35,8 +35,9 @@ public class FFTest
     	
         final JFrame frame = new JFrame("FFT");
         
-        final File recordedIn = new File("/home/tobi/tmp/recorded.wav");
-//      final File recordedIn = null;
+//        final File recordedIn = new File("/home/tobi/tmp/recorded.wav");
+      final File recordedIn = null;
+      
 //      final File processedOut = new File("/home/tgierke/tmp/processed.wav");
         final File processedOut = null;
         
