@@ -9,9 +9,10 @@ public final class RingBuffer {
 	private final int bufferCount;
 
 	private byte[] writeBuffer;
-    private final byte[][] refData;
+	
+    private final byte[][] bufferPool;
     
-    private final AtomicReferenceArray<byte[]> data;
+    private final AtomicReferenceArray<byte[]> activeBuffers;
 	   
 	private int readPtr = 0;
 	private int writePtr = 0;
@@ -29,12 +30,12 @@ public final class RingBuffer {
         this.bufferCount = bufferCount;
         this.bufferSize = bufferSize;
         
-	    this.data = new AtomicReferenceArray<byte[]>(bufferCount);
+	    this.activeBuffers = new AtomicReferenceArray<byte[]>(bufferCount);
 	    
-		this.refData = new byte[bufferCount][];
+		this.bufferPool = new byte[bufferCount][];
 		
 		for ( int i = 0 ;i < bufferCount ; i++  ) {
-			refData[i] = new byte[ bufferSize ];
+			bufferPool[i] = new byte[ bufferSize ];
 		}
 	}
 
@@ -53,12 +54,6 @@ public final class RingBuffer {
 	public void write(BufferWriter writer) 
 	{
         final byte[] tmpBuffer=this.writeBuffer;
-        
-        /*
-         * We require the writer to always write
-         * zero or 'bufferSize' bytes, anything else 
-         * will be discarded-
-         */
         final int written = writer.write( tmpBuffer , bufferSize );        
 	    if ( written == 0 ) 
 	    {
@@ -74,10 +69,10 @@ public final class RingBuffer {
         final int writePtr = this.writePtr;
         final int ptr = writePtr % bufferCount;	    
 
-	    this.writeBuffer = refData[ptr];
-	    refData[ptr] = tmpBuffer;
+	    this.writeBuffer = bufferPool[ptr];
+	    bufferPool[ptr] = tmpBuffer;
 	    
-		final byte[] oldBuffer = data.getAndSet( ptr , tmpBuffer );
+		final byte[] oldBuffer = activeBuffers.getAndSet( ptr , tmpBuffer );
 		if ( oldBuffer != null ) 
 		{
 	          lostBytesCount += bufferSize;
@@ -93,7 +88,7 @@ public final class RingBuffer {
         final int ptr = this.readPtr % bufferCount;
 	       
         byte[] currentBuffer;
-	    while ( ( currentBuffer = data.get( ptr ) ) == null ) 
+	    while ( ( currentBuffer = activeBuffers.get( ptr ) ) == null ) 
 	    {
 	        if ( Thread.interrupted() ) 
 	        {
@@ -103,7 +98,7 @@ public final class RingBuffer {
         
 	    System.arraycopy( currentBuffer , 0 , target , 0 , bufferSize );
 	    
-        data.compareAndSet( ptr , currentBuffer , null );
+        activeBuffers.compareAndSet( ptr , currentBuffer , null );
         this.readPtr++;        
 		return bufferSize;
 	}

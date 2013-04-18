@@ -46,7 +46,7 @@ public final class BiQuadFilter extends Filter
     }
 
     @Override
-    public double[] filter(double[] x, double windowDurationInSeconds)
+    public double[] filter(double[] x)
     {
         final int len = x.length;
         for ( int n = 0 ; n < len ; n++ ) 

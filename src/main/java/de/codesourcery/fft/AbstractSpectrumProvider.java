@@ -17,8 +17,9 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioFormat.Encoding;
 
 import de.codesourcery.fft.filter.BiQuadFilter;
-import de.codesourcery.fft.filter.Filter;
+import de.codesourcery.fft.filter.FilterCascade;
 import de.codesourcery.fft.filter.BiQuadFilter.BiQuadType;
+import de.codesourcery.fft.filter.Filter;
 import de.codesourcery.fft.filter.Filter.NOPFilter;
 import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
 
@@ -38,8 +39,7 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 
 	private final ExecutorService threadPool;
 
-	private final Filter lowPassFilter;
-	private final Filter highPassFilter;
+	private final Filter filter;
 
 	private final AudioFormat audioFormat;
 	private final boolean signedSamples;
@@ -67,8 +67,10 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 			this.waveWriter = null;
 		}
 		
-		this.highPassFilter = BiQuadFilter.create( BiQuadType.HIGHPASS , 50 , audioFormat.getSampleRate() , 1 , 6 ); 
-        this.lowPassFilter = BiQuadFilter.create( BiQuadType.LOWPASS , 18000 , audioFormat.getSampleRate() , 1 , 6 ); 
+		Filter highPass = BiQuadFilter.create( BiQuadType.HIGHPASS , 200 , audioFormat.getSampleRate() , 1 , 6 ); 
+        Filter lowPass = BiQuadFilter.create( BiQuadType.LOWPASS , 18000 , audioFormat.getSampleRate() , 1 , 6 );
+        
+        this.filter = new FilterCascade( highPass , lowPass );
         
 		this.signedSamples = audioFormat.getEncoding() == Encoding.PCM_SIGNED || audioFormat.getEncoding() == Encoding.PCM_FLOAT;        
 
@@ -203,11 +205,6 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 
 	protected abstract SampleData getData();
 
-	protected final double[] filterData(double[] buffer) {
-		final double durationInSeconds = buffer.length / audioFormat.getSampleRate();      
-		return lowPassFilter.filter( highPassFilter.filter( buffer , durationInSeconds ) , durationInSeconds );
-	}
-
 	protected final synchronized Spectrum calculateSpectrum(final int fftSize,final boolean applyWindowingFunction , boolean applyFilters )
 	{
 		// aquire sample data
@@ -219,8 +216,9 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 		long dataAquisitionTime = System.currentTimeMillis();
 
 		// apply filters
-		if ( applyFilters ) { 
-			jointStereo = filterData( jointStereo );
+		if ( applyFilters ) 
+		{ 
+			jointStereo = filter.filter( jointStereo );
 		}
 		long filterTime = System.currentTimeMillis();
 
