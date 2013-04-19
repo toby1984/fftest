@@ -141,7 +141,7 @@ public final class SpectrumPanel extends JPanel {
 				@Override
 				public void run()
 				{
-					if ( spectrum.getVolumeInPercent() >= 0.10 ) 
+					if ( spectrum.getVolumeInPercent() >= 0.05 ) 
 					{
 						final List<FrequencyAndSlot> top = spectrum.getTopAutoCorrelated();
 						if ( top.size() >= 2 ) 

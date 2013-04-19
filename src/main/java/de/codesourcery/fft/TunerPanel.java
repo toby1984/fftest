@@ -59,7 +59,7 @@ public class TunerPanel extends JPanel {
 					translatedActualFrequency = translated;
 				}
 			}
-			for ( int i = 0 ; i < 3 ; i++ ) 
+			for ( int i = 1 ; i < 3 ; i++ ) 
 			{
 				double translated = actualFrequency * (double) ( 1 << i );
 				double deltaFreq = Math.abs( k.getTargetFrequency() - translated );
@@ -82,10 +82,10 @@ public class TunerPanel extends JPanel {
 			double delta2 = Math.abs( TuningHelper.E4.getTargetFrequency() - actualFrequency );
 			if ( delta1 < delta2 ) {
 				System.out.println("delta1: "+delta1+" / delta2: "+delta2+" => picking E2");
-				best = TuningHelper.E2.withActualFrequency( translatedActualFrequency );
+				best = TuningHelper.E2.withActualFrequency( actualFrequency );
 			} else {
 				System.out.println("delta1: "+delta1+" / delta2: "+delta2+" => picking E4");
-				best = TuningHelper.E4.withActualFrequency( translatedActualFrequency );
+				best = TuningHelper.E4.withActualFrequency( actualFrequency );
 			}
 		} 
 		return best;

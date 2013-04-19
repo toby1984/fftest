@@ -45,12 +45,13 @@ public class FFTest
         final int bands;
         final int fftSize;
         final ISpectrumProvider provider ;
-        if ( useMike ) {
-            AudioFormat format = new AudioFormat(44100.0f, 16, 1, true , false);
-            provider = new MicrophoneSpectrumProvider(format,8192,processedOut,recordedIn);
+        if ( useMike ) 
+        {
+            AudioFormat format = new AudioFormat(44100, 16, 1, true , false);
+            provider = new MicrophoneSpectrumProvider(format,16384,processedOut,recordedIn);
             ((MicrophoneSpectrumProvider) provider).start();
-            bands = 2048;
-            fftSize = 2048;
+            bands = 4096;
+            fftSize = 4096;
         } 
         else 
         {

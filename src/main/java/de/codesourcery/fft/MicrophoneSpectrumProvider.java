@@ -19,7 +19,7 @@ public class MicrophoneSpectrumProvider extends AbstractSpectrumProvider {
 	public MicrophoneSpectrumProvider(AudioFormat format, int bufferSizeInSamples,File waveFile,File micInRawFile) throws LineUnavailableException, FileNotFoundException 
 	{
 	    super(format,waveFile);
-		final TargetDataLine line = AudioSystem.getTargetDataLine(format);	
+		final TargetDataLine line = AudioSystem.getTargetDataLine(format);
 		provider = new MicrophoneAudioProvider(line,format,bufferSizeInSamples,100, micInRawFile );
 		tmpBuffer = new byte[ provider.getBufferSizeInBytes() ];
 	}
