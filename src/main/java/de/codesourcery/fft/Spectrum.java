@@ -49,7 +49,7 @@ public final class Spectrum
         this.minPower = minValue;
         this.maxPower = maxValue;
         this.volumeInPercent = volumeInPercent;
-        this.topAutoCorrelated = calcTopAutoCorrelationFrequencies(1);
+        this.topAutoCorrelated = calcTopAutoCorrelationFrequencies(4);
     }
     
     public double getVolumeInPercent() {

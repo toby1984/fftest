@@ -45,6 +45,8 @@ public final class SpectrumPanel extends JPanel {
 	private volatile boolean applyWindowFunction=true;
 	private volatile int bands;
 	private volatile ISpectrumProvider spectrumProvider;	
+	
+	private final TunerPanel tunerPanel;
 
 	private final RefreshThread refreshThread = new RefreshThread();
 	
@@ -128,7 +130,7 @@ public final class SpectrumPanel extends JPanel {
 	private final ICallback repaintCallback = new ICallback() {
 
 		@Override
-		public void calculationFinished(ISpectrumProvider provider, Spectrum spectrum)
+		public void calculationFinished(ISpectrumProvider provider, final Spectrum spectrum)
 		{
 			SpectrumPanel.this.spectrum = spectrum;
 			
@@ -139,7 +141,26 @@ public final class SpectrumPanel extends JPanel {
 				@Override
 				public void run()
 				{
-					repaint();
+					if ( spectrum.getVolumeInPercent() >= 0.10 ) 
+					{
+						final List<FrequencyAndSlot> top = spectrum.getTopAutoCorrelated();
+						if ( top.size() >= 2 ) 
+						{
+							// I intentionally use at most an uneven (the top-3) number of frequencies here to
+							// avoid ambiguous pitch detection ( think of the case where we would have 4 frequencies
+							// with { f1 , f1*2 , f2 , f2*2 } ) 							
+							final int maxFrequencies = Math.min( top.size() , 3 );
+							
+							final double[] frequencies = new double[ maxFrequencies ];
+
+							for ( int i = 0 ; i < maxFrequencies  ; i++ ) 
+							{
+								frequencies[i] = top.get(i).getFrequency();
+							}
+							tunerPanel.setFrequency( frequencies );
+						}
+					}
+					SpectrumPanel.this.repaint();
 				}
 			});
 		}
@@ -217,7 +238,6 @@ public final class SpectrumPanel extends JPanel {
 
 	public void dispose() 
 	{
-		System.out.println("Disposing panel");
 		refreshThread.terminate();
 		spectrumProvider.close();
 	}
@@ -227,9 +247,10 @@ public final class SpectrumPanel extends JPanel {
 		c.addKeyListener( this.keyListener );
 	}
 
-	public SpectrumPanel(ISpectrumProvider provider,int windowSize,boolean applyFilters)
+	public SpectrumPanel(ISpectrumProvider provider,TunerPanel tunerPanel,int windowSize,int fftSize,boolean applyFilters)
 	{
-		this.bands = windowSize/2;
+		this.tunerPanel = tunerPanel;
+		this.bands = fftSize;
 		this.applyFilters = applyFilters;
 		addMouseMotionListener( mouseListener );
 		setSpectrumProvider(provider);
@@ -260,9 +281,6 @@ public final class SpectrumPanel extends JPanel {
 			public void calculationFinished(ISpectrumProvider provider,
 					Spectrum spectrum) 
 			{
-				@SuppressWarnings("unused")
-				final long delta = System.currentTimeMillis() - start;
-				//				System.out.println("Calculation finished after "+delta);
 				repaintCallback.calculationFinished( provider , spectrum);
 			}
 
@@ -322,7 +340,7 @@ public final class SpectrumPanel extends JPanel {
 			plotMarkerFrequency(g);
 			time += System.currentTimeMillis();
 			if ( ( renderCount++ % 50 ) == 0 ) {
-				System.out.println("Rendering time: "+time);
+//				System.out.println("Rendering time: "+time);
 			}
 		} else {
 			System.out.println("No spectrum to paint");

@@ -37,8 +37,8 @@ public class AudioFileSpectrumProvider extends AbstractSpectrumProvider
         }
 
         // join data from all channels by summing them up and taking the arithmetic average
-         final int totalSampleCount = (int) Math.ceil( file.getTotalFrameCount()* ( file.getSamplesPerFrame() / file.getFormat().getChannels() ));
-//        final int totalSampleCount = 16384;
+        final int totalSampleCount = (int) Math.ceil( file.getTotalFrameCount()* ( file.getSamplesPerFrame() / file.getFormat().getChannels() ));
+//      final int totalSampleCount = 16384;
         
         final double channels = file.getFormat().getChannels();
         final double[] jointStereo = new double[ totalSampleCount ]; // 16-bit samples

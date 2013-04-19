@@ -321,13 +321,13 @@ public abstract class AbstractSpectrumProvider implements ISpectrumProvider
 				filterTime -= dataAquisitionTime;
 				dataAquisitionTime -= startTime;
 
-				System.out.println("Total: "+totalTime+
-						" / FFT: "+fftTime+
-						" / filters: "+filterTime+
-						" / window_func: "+windowFuncTime+
-						" / wave_write: "+wavWriteTime+
-						" / calc_average': "+calcAverageTime+
-						" / sampling: "+dataAquisitionTime);
+//				System.out.println("Total: "+totalTime+
+//						" / FFT: "+fftTime+
+//						" / filters: "+filterTime+
+//						" / window_func: "+windowFuncTime+
+//						" / wave_write: "+wavWriteTime+
+//						" / calc_average': "+calcAverageTime+
+//						" / sampling: "+dataAquisitionTime);
 			}
 		}
 	}

@@ -35,20 +35,22 @@ public class FFTest
     	
         final JFrame frame = new JFrame("FFT");
         
-//        final File recordedIn = new File("/home/tobi/tmp/recorded.wav");
-      final File recordedIn = null;
+//      final File recordedIn = new File("/home/tobi/tmp/recorded.wav");
+        final File recordedIn = null;
       
 //      final File processedOut = new File("/home/tgierke/tmp/processed.wav");
         final File processedOut = null;
         
         // setup FFT spectrum panel
         final int bands;
+        final int fftSize;
         final ISpectrumProvider provider ;
         if ( useMike ) {
             AudioFormat format = new AudioFormat(44100.0f, 16, 1, true , false);
             provider = new MicrophoneSpectrumProvider(format,8192,processedOut,recordedIn);
             ((MicrophoneSpectrumProvider) provider).start();
             bands = 2048;
+            fftSize = 2048;
         } 
         else 
         {
@@ -56,9 +58,11 @@ public class FFTest
             System.out.println( file );
         	provider = new AudioFileSpectrumProvider( file , processedOut );
         	bands = 4096;
+        	fftSize = 4096;
         }
         
-		final SpectrumPanel panel = new SpectrumPanel(  provider ,  bands , true );
+        final TunerPanel tunerPanel = new TunerPanel();
+		final SpectrumPanel panel = new SpectrumPanel(  provider ,  tunerPanel , bands , fftSize , false );
 		
         panel.setSize( new Dimension(600,400 ) );
         panel.setPreferredSize( new Dimension(600,400 ) );
@@ -113,6 +117,7 @@ public class FFTest
         
         cnstrs = new GridBagConstraints();
         cnstrs.fill = GridBagConstraints.NONE;
+        cnstrs.gridwidth=1;
         cnstrs.gridx=1;
         cnstrs.gridy=0;
         cnstrs.gridwidth=1;        
@@ -121,24 +126,35 @@ public class FFTest
         
         combined.add( button ,cnstrs );        
         
+        // add tuner panel
+        cnstrs = new GridBagConstraints();
+        cnstrs.fill = GridBagConstraints.NONE;
+        cnstrs.gridx=2;
+        cnstrs.gridy=0;
+        cnstrs.gridwidth=1;        
+        cnstrs.weightx=0;
+        cnstrs.weighty=0;        
+        
+        combined.add( tunerPanel ,cnstrs );  
+        
         // add FFT spectrum panel
         cnstrs = new GridBagConstraints();
         cnstrs.fill = GridBagConstraints.BOTH;
-        cnstrs.gridwidth=2;
+        cnstrs.gridwidth=3;
         cnstrs.gridx=0;
         cnstrs.gridy=1;
-        cnstrs.weightx=1.0;
-        cnstrs.weighty=1.0;
+        cnstrs.weightx=1;
+        cnstrs.weighty=1;
         
         combined.add( panel ,cnstrs );
         
         // add to frame's content panel
+        frame.getContentPane().setLayout( new GridBagLayout() );
+        
         cnstrs = new GridBagConstraints();
         cnstrs.fill = GridBagConstraints.BOTH;
         cnstrs.weightx=1.0;
-        cnstrs.weighty=1.0;   
-        
-        frame.getContentPane().setLayout( new GridBagLayout() );
+        cnstrs.weighty=1.0;           
         frame.getContentPane().add( combined , cnstrs );
         
         frame.addWindowListener( new WindowAdapter() {
@@ -146,6 +162,8 @@ public class FFTest
         	public void windowClosing(WindowEvent e) 
         	{
         		panel.dispose();
+        		tunerPanel.terminate();
+        		
         		super.windowClosing(e);
         		// force shutdown because for some odd reason the AudioSystem
         		// has some non-daemon threads still running (although this

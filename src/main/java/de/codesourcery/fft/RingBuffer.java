@@ -72,15 +72,15 @@ public final class RingBuffer {
 	    this.writeBuffer = bufferPool[ptr];
 	    bufferPool[ptr] = tmpBuffer;
 	    
-		final byte[] oldBuffer = activeBuffers.getAndSet( ptr , tmpBuffer );
-		if ( oldBuffer != null ) 
+		if ( ! activeBuffers.compareAndSet( ptr , null, tmpBuffer )  ) 
 		{
 	          lostBytesCount += bufferSize;
 	          if ( ( writePtr % 50 ) == 0 ) {
 	             System.out.println("Total bytes lost "+lostBytesCount+" : write-ptr: "+writePtr+" / read-ptr: "+readPtr);
 	          }
+		} else {
+			this.writePtr++;
 		}
-		this.writePtr++;
 	}
 
 	public int read(byte[] target) throws InterruptedException 
